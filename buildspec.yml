@@ -1,0 +1,47 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.11
+    commands:
+      - echo "Installing Terraform..."
+      - export TF_VERSION=$(curl -s https://api.github.com/repos/hashicorp/terraform/releases/latest | grep tag_name | cut -d '"' -f 4 | sed 's/v//')
+      - echo "Installing Terraform version $TF_VERSION"
+      - wget https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip
+      - unzip terraform_${TF_VERSION}_linux_amd64.zip
+      - mv terraform /usr/local/bin/
+      - terraform --version
+      - echo "Installing AWS CLI..."
+      - pip3 install --upgrade awscli
+
+  pre_build:
+    commands:
+      - echo "Retrieving Venafi API key from Secrets Manager..."
+      - export TF_VAR_venafi_api_key=$(aws secretsmanager get-secret-value --secret-id pki-tppl-api-key --query SecretString --output text)
+      - echo "Terraform initialization started on `date`"
+      - terraform init
+      - echo "Terraform validation started on `date`"
+      - terraform validate
+      - echo "Terraform plan started on `date`"
+      - terraform plan -out=tfplan
+
+  build:
+    commands:
+      - echo "Terraform apply started on `date`"
+      - |
+        if [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/main" ] || [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/master" ]; then
+          echo "Applying Terraform changes..."
+          terraform apply -auto-approve tfplan
+        else
+          echo "Not on main/master branch, skipping apply"
+        fi
+
+  post_build:
+    commands:
+      - echo "Terraform deployment completed on `date`"
+      - terraform output
+
+artifacts:
+  files:
+    - "**/*"
