@@ -15,7 +15,7 @@ terraform {
       version = "~> 3.6"
     }
   }
-  
+
   # S3 backend configuration
   backend "s3" {
     bucket = "mv-tf-pipeline-state"
@@ -28,7 +28,7 @@ terraform {
 # Configure the AWS Provider
 provider "aws" {
   region = var.aws_region
-  
+
   default_tags {
     tags = {
       Environment = var.environment
@@ -50,7 +50,7 @@ provider "venafi" {
 # Local values for conditional logic
 locals {
   # Conditional Venafi zone based on environment (including issuing template alias)
-  venafi_zone = var.environment == "prod" ? "aws_12345_730335317277_prod\\${var.venafi_template_alias}" : "aws_12345_730335317277_lle\\${var.venafi_template_alias}"
+  venafi_zone = var.environment == "prod" ? "aws_12345_${var.aws_account_id}_prod\\${var.venafi_template_alias}" : "aws_12345_${var.aws_account_id}_lle\\${var.venafi_template_alias}"
 }
 
 # Random ID for generating unique certificate common names
@@ -65,7 +65,7 @@ resource "venafi_certificate" "certificates" {
   common_name = "cert-${random_id.cert_suffix[count.index].hex}.${var.certificate_domain}"
   algorithm   = var.certificate_algorithm
   rsa_bits    = var.certificate_rsa_bits
-  
+
   # Optional: Add subject alternative names
   san_dns = [
     "alt-${random_id.cert_suffix[count.index].hex}.${var.certificate_domain}",
@@ -75,11 +75,11 @@ resource "venafi_certificate" "certificates" {
   # Optional: Certificate validity period
   valid_days = var.certificate_valid_days
 
-  # VCP supports tags for certificate organization and metadata
-  tags = {
-    "Environment" = var.environment
-    "Project"     = var.project_name
-    "Index"       = tostring(count.index)
-    "CreatedBy"   = "terraform"
-  }
+  # VCP supports tags as a list of strings for certificate organization
+   tags = [
+     "Environment: ${var.environment}",
+  #   "Project:${var.project_name}",
+  #   "Index:${count.index}",
+  #   "CreatedBy:terraform"
+   ]
 }

@@ -17,6 +17,12 @@ variable "project_name" {
   default     = "infra-tf-app"
 }
 
+variable "aws_account_id" {
+  description = "AWS Account ID"
+  type        = string
+  default     = "123456789012"
+}
+
 # Venafi Variables
 variable "venafi_api_key" {
   description = "Venafi API key for authentication"
@@ -60,7 +66,7 @@ variable "certificate_algorithm" {
   description = "Certificate algorithm"
   type        = string
   default     = "RSA"
-  
+
   validation {
     condition     = contains(["RSA", "ECDSA"], var.certificate_algorithm)
     error_message = "Algorithm must be either RSA or ECDSA."
@@ -71,7 +77,7 @@ variable "certificate_rsa_bits" {
   description = "RSA key size (only used if algorithm is RSA)"
   type        = number
   default     = 2048
-  
+
   validation {
     condition     = contains([2048, 3072, 4096], var.certificate_rsa_bits)
     error_message = "RSA bits must be 2048, 3072, or 4096."
