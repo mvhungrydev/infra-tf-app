@@ -36,3 +36,50 @@ variable "venafi_template_alias" {
   type        = string
   default     = "Default"
 }
+
+variable "venafi_cloud_url" {
+  description = "Venafi Control Plane (VCP) URL"
+  type        = string
+  default     = "https://api.venafi.cloud"
+}
+
+# Certificate Variables
+variable "certificate_count" {
+  description = "Number of certificates to create"
+  type        = number
+  default     = 3
+}
+
+variable "certificate_domain" {
+  description = "Domain name for certificates (will be used with random prefix)"
+  type        = string
+  default     = "example.com"
+}
+
+variable "certificate_algorithm" {
+  description = "Certificate algorithm"
+  type        = string
+  default     = "RSA"
+  
+  validation {
+    condition     = contains(["RSA", "ECDSA"], var.certificate_algorithm)
+    error_message = "Algorithm must be either RSA or ECDSA."
+  }
+}
+
+variable "certificate_rsa_bits" {
+  description = "RSA key size (only used if algorithm is RSA)"
+  type        = number
+  default     = 2048
+  
+  validation {
+    condition     = contains([2048, 3072, 4096], var.certificate_rsa_bits)
+    error_message = "RSA bits must be 2048, 3072, or 4096."
+  }
+}
+
+variable "certificate_valid_days" {
+  description = "Certificate validity period in days"
+  type        = number
+  default     = 90
+}

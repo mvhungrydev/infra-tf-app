@@ -10,6 +10,10 @@ terraform {
       source  = "Venafi/venafi"
       version = "~> 0.23"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
+    }
   }
   
   # S3 backend configuration
@@ -34,11 +38,12 @@ provider "aws" {
   }
 }
 
-# Configure the Venafi Provider
+# Configure the Venafi Provider for VCP (Venafi Control Plane)
 provider "venafi" {
   # API key retrieved from AWS Secrets Manager via CodeBuild
   # The TF_VAR_venafi_api_key environment variable is set in buildspec.yml
   api_key = var.venafi_api_key
+  url     = var.venafi_cloud_url
   zone    = local.venafi_zone
 }
 
@@ -46,4 +51,35 @@ provider "venafi" {
 locals {
   # Conditional Venafi zone based on environment (including issuing template alias)
   venafi_zone = var.environment == "prod" ? "aws_12345_730335317277_prod\\${var.venafi_template_alias}" : "aws_12345_730335317277_lle\\${var.venafi_template_alias}"
+}
+
+# Random ID for generating unique certificate common names
+resource "random_id" "cert_suffix" {
+  count       = var.certificate_count
+  byte_length = 4
+}
+
+# Venafi Certificate Resources
+resource "venafi_certificate" "certificates" {
+  count       = var.certificate_count
+  common_name = "cert-${random_id.cert_suffix[count.index].hex}.${var.certificate_domain}"
+  algorithm   = var.certificate_algorithm
+  rsa_bits    = var.certificate_rsa_bits
+  
+  # Optional: Add subject alternative names
+  san_dns = [
+    "alt-${random_id.cert_suffix[count.index].hex}.${var.certificate_domain}",
+    "www-${random_id.cert_suffix[count.index].hex}.${var.certificate_domain}"
+  ]
+
+  # Optional: Certificate validity period
+  valid_days = var.certificate_valid_days
+
+  # VCP supports tags for certificate organization and metadata
+  tags = {
+    "Environment" = var.environment
+    "Project"     = var.project_name
+    "Index"       = tostring(count.index)
+    "CreatedBy"   = "terraform"
+  }
 }
