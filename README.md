@@ -1,34 +1,156 @@
-# Terraform Infrastructure with AWS CodeBuild and Venafi Control Plane (VCP)
+# Terraform Infrastructure with AWS CodeBuild, Venafi Control Plane (VCP), and EC2 vSatellite
 
-This project contains Terraform infrastructure code that is designed to be built and deployed using AWS CodeBuild. The Terraform state is stored in an S3 bucket without DynamoDB state locking. The project includes integration with Venafi Control Plane (VCP) for automated certificate management with support for multiple certificate creation.
+This project contains Terraform infrastructure code that is designed to be built and deployed using AWS CodeBuild. The Terraform state is stored in an S3 bucket without DynamoDB state locking. The project includes integration with Venafi Control Plane (VCP) for automated certificate management with support for multiple certificate creation, plus EC2 instance deployment for Venafi vSatellite with automatic VPC/subnet discovery.
 
 ## Project Structure
 
 ```
 .
-├── main.tf                   # Main Terraform configuration with AWS and Venafi providers
-├── variables.tf              # Input variables including Venafi VCP configuration
-├── outputs.tf                # Output values for certificates and variables
-├── codebuild.tf             # CodeBuild project using existing IAM role
-├── buildspec.yml            # CodeBuild build specification with latest Terraform
-├── terraform.tfvars.example # Example variables file
-├── terraform.tfvars         # Your actual variables file (not in git)
-├── .gitignore              # Git ignore patterns
-└── README.md               # This file
+├── main.tf                    # Main Terraform configuration with AWS and Venafi providers
+├── variables.tf               # Input variables including Venafi VCP and EC2 configuration
+├── outputs.tf                 # Output values for certificates, variables, and EC2 instance details
+├── ec2-vsatellite.tf         # EC2 instance configuration for Venafi vSatellite with VPC discovery
+├── user-data-vsatellite.sh   # User data script for vSatellite installation
+├── codebuild.tf              # CodeBuild project using existing IAM role
+├── buildspec.yml             # CodeBuild build specification with latest Terraform
+├── terraform.tfvars.example  # Example variables file
+├── terraform.tfvars          # Your actual variables file (not in git)
+├── .gitignore               # Git ignore patterns
+└── README.md                # This file
 ```
 
 ## Prerequisites
 
+### AWS Account & Permissions
+
 1. **AWS Account**: You need an AWS account with appropriate permissions
-2. **S3 Bucket**: The S3 bucket `mv-tf-pipeline-state` for Terraform state storage
-3. **AWS CLI**: Configure AWS CLI with appropriate credentials
-4. **Terraform**: The buildspec automatically installs the latest Terraform version
-5. **Existing IAM Roles**:
-   - `terraform-cicd-dev-codebuild-role` for CodeBuild execution
-6. **Venafi Control Plane (VCP) Access**:
-   - API key stored in AWS Secrets Manager (`pki-tppl-api-key`)
-   - Access to Venafi Control Plane at `https://api.venafi.cloud`
-7. **Shell Aliases**: Convenient aliases are configured for terraform commands
+2. **AWS CLI**: Configure AWS CLI with appropriate credentials and region
+   ```bash
+   aws configure
+   # Set your Access Key ID, Secret Access Key, Default region (us-east-1), and output format
+   ```
+3. **AWS Account ID**: Know your 12-digit AWS Account ID for variable configuration
+
+### Infrastructure Storage & State Management
+
+4. **S3 Bucket**: The S3 bucket `mv-tf-pipeline-state` for Terraform state storage
+   - Must exist with versioning enabled
+   - Proper IAM permissions for read/write access
+5. **No DynamoDB**: This configuration doesn't use DynamoDB for state locking (as requested)
+
+### Development Tools
+
+6. **Terraform**: The buildspec automatically installs the latest Terraform version for CodeBuild
+
+   - For local development: Install Terraform >= 1.0 on your machine
+
+   ```bash
+   # macOS with Homebrew
+   brew install terraform
+
+   # Or download from https://terraform.io/downloads
+   ```
+
+7. **Git**: Version control system for code management
+8. **Code Editor**: VS Code, IntelliJ, or similar with Terraform syntax support
+
+### AWS IAM Roles & Permissions
+
+9. **Existing CodeBuild IAM Role**: `terraform-cicd-dev-codebuild-role`
+   - Must have permissions for EC2, VPC, S3, Secrets Manager, and other AWS services
+   - Must be able to assume roles and create/modify infrastructure
+10. **Local Development Permissions**: Your AWS user/role must have permissions for:
+    - EC2 (instances, security groups, key pairs)
+    - VPC (describe VPCs, subnets, route tables)
+    - S3 (state bucket access)
+    - Secrets Manager (read pki-tppl-api-key)
+    - IAM (read roles, policies)
+
+### Venafi Control Plane (VCP) Requirements
+
+11. **Venafi VCP Account**: Active account with Venafi Control Plane
+    - Access to `https://api.venafi.cloud`
+    - Valid API key with certificate creation permissions
+12. **Venafi API Key Storage**: API key stored in AWS Secrets Manager
+    - Secret name: `pki-tppl-api-key`
+    - Secret value: Your Venafi VCP API key
+    ```bash
+    # Create secret in AWS Secrets Manager
+    aws secretsmanager create-secret \
+        --name pki-tppl-api-key \
+        --description "Venafi VCP API Key" \
+        --secret-string "your-venafi-api-key-here"
+    ```
+13. **Certificate Domain**: Valid domain name you own for certificate generation
+
+### Existing AWS Infrastructure
+
+14. **VPC**: Existing VPC containing "tf-infra-networking" in the name
+    - Must have proper tags: `Name` and `Environment=dev`
+    - Example: `mv-tf-infra-networking-vpc` with `Environment=dev` tag
+15. **Subnets**: Private subnets within the VPC
+    - Either named with "private"/"Private" in the name
+    - Or configured as private subnets (route tables without internet gateway)
+16. **Security Groups**: Existing security groups within the VPC (optional)
+    - The configuration will discover existing security groups
+    - Falls back to VPC default security group if none found
+17. **NAT Gateway/Instance**: For private subnet internet access (required for vSatellite to communicate with Venafi Cloud)
+
+### SSH Access (Optional)
+
+18. **EC2 Key Pair**: SSH key pair for traditional SSH access (optional)
+    - Can be created in AWS Console or CLI
+    - Alternatively, use AWS Instance Connect (no key pair needed)
+    ```bash
+    # Create key pair
+    aws ec2 create-key-pair \
+        --key-name my-terraform-key \
+        --query 'KeyMaterial' \
+        --output text > ~/.ssh/my-terraform-key.pem
+    chmod 400 ~/.ssh/my-terraform-key.pem
+    ```
+
+### Network Access
+
+19. **VPC Connectivity**: Method to access private subnet resources
+    - VPN connection to your AWS VPC, OR
+    - Bastion host/jump server, OR
+    - AWS VPC peering, OR
+    - AWS Direct Connect
+20. **AWS Instance Connect**: For secure SSH access to private instances
+    - Enabled in us-east-1 region
+    - No additional setup required
+
+### Development Environment
+
+21. **Shell Environment**: bash, zsh, or compatible shell for aliases
+22. **Internet Access**: For downloading Terraform, accessing Venafi Cloud, and AWS APIs
+
+### Monitoring & Logging (Recommended)
+
+23. **CloudWatch**: For monitoring CodeBuild logs and EC2 instances
+24. **VPC Flow Logs**: For network troubleshooting (optional)
+
+### Validation Commands
+
+Before proceeding, verify your setup:
+
+```bash
+# Test AWS CLI access
+aws sts get-caller-identity
+
+# Verify S3 bucket access
+aws s3 ls s3://mv-tf-pipeline-state
+
+# Check Venafi API key in Secrets Manager
+aws secretsmanager get-secret-value --secret-id pki-tppl-api-key
+
+# Verify VPC exists
+aws ec2 describe-vpcs --filters "Name=tag:Name,Values=*tf-infra-networking*"
+
+# Test Terraform installation
+terraform version
+```
 
 ## Setup
 
@@ -55,6 +177,7 @@ Edit `terraform.tfvars` with your specific values, including:
 - AWS region, account ID, and environment settings
 - Venafi API key and VCP configuration
 - Certificate domain and count preferences
+- EC2 vSatellite configuration including key pair for SSH access
 
 **Important Variables to Configure:**
 
@@ -67,6 +190,11 @@ project_name   = "infra-tf-app"
 # Certificate configuration
 certificate_count  = 5
 certificate_domain = "example.com"  # Replace with your domain
+
+# EC2 vSatellite configuration
+key_pair_name              = "my-key-pair"        # REQUIRED: Your EC2 key pair
+vsatellite_instance_type   = "t3.large"
+vsatellite_root_volume_size = 50
 ```
 
 ### 3. Venafi Configuration
@@ -172,11 +300,89 @@ The buildspec.yml automatically:
 
 The CodeBuild project uses the existing `terraform-cicd-dev-codebuild-role` instead of creating a new one.
 
+## EC2 vSatellite Deployment
+
+This project automatically deploys an EC2 instance for Venafi vSatellite with intelligent infrastructure discovery.
+
+### Infrastructure Discovery
+
+The vSatellite deployment automatically discovers existing infrastructure:
+
+#### VPC Discovery
+
+```hcl
+# Finds VPC containing 'tf-infra-networking' in name and matching environment
+data "aws_vpcs" "infra_tf" {
+  tags = {
+    Name        = "*tf-infra-networking*"
+    Environment = var.environment  # "dev"
+  }
+}
+```
+
+#### Subnet Discovery
+
+- **Primary**: Searches for subnets with "private" or "Private" in the name
+- **Fallback**: Analyzes route tables to identify private subnets (no internet gateway routes)
+- **Selection**: Automatically selects the first available private subnet
+
+#### Security Group Discovery
+
+- **Primary**: Searches for existing security groups containing patterns like:
+  - `*tf-infra*`
+  - `*infra-tf*`
+  - `*mv-tf*`
+  - `*${project_name}*`
+- **Fallback**: Uses VPC default security group if no specific security group found
+
+### EC2 Instance Configuration
+
+```hcl
+resource "aws_instance" "vsatellite" {
+  ami                     = data.aws_ami.amazon_linux.id  # Latest Amazon Linux 2
+  instance_type           = var.vsatellite_instance_type  # t3.large (recommended)
+  key_name               = var.key_pair_name              # Your SSH key pair
+  subnet_id              = local.selected_private_subnet  # Auto-discovered private subnet
+  vpc_security_group_ids = [data.aws_security_group.vsatellite.id]  # Auto-discovered security group
+
+  # Root volume: 50GB GP3 encrypted storage
+  # User data: Automated vSatellite installation script
+  # Instance Connect: Enabled for secure SSH access
+}
+```
+
+### Access Methods
+
+After deployment, you can access the vSatellite instance using:
+
+1. **AWS Instance Connect** (Recommended for private subnets):
+
+   ```bash
+   aws ec2-instance-connect ssh --instance-id i-1234567890abcdef0 --os-user ec2-user
+   ```
+
+2. **Traditional SSH** (if key pair configured):
+
+   ```bash
+   ssh -i ~/.ssh/your-key.pem ec2-user@<private-ip>
+   ```
+
+3. **Web Interface** (from within VPC):
+   ```bash
+   https://<private-ip>  # After vSatellite installation completes
+   ```
+
+### Security Features
+
+- **Private Subnet Deployment**: Instance placed in private subnet with no direct internet access
+- **AWS Instance Connect Integration**: Secure SSH without managing SSH keys
+- **Encrypted Storage**: GP3 volumes with encryption enabled
+- **Security Group Discovery**: Uses existing security groups for proper network access
+- **IMDSv2 Required**: Instance metadata service v2 enforced for security
+
 ## Venafi Control Plane (VCP) Integration
 
 This project is configured to work with Venafi Control Plane (VCP) for automated certificate management.
-
-### Configuration
 
 The Venafi provider is configured to use VCP:
 
@@ -243,9 +449,9 @@ Based on `terraform.tfvars`:
 | `venafi_template_alias`  | Default                  | Venafi issuing template          |
 | `venafi_cloud_url`       | https://api.venafi.cloud | VCP API endpoint                 |
 
-## Outputs
+### Outputs
 
-The project provides comprehensive outputs for both certificates and configuration variables:
+The project provides comprehensive outputs for certificates, configuration variables, and EC2 infrastructure:
 
 ### Certificate Outputs
 
@@ -253,6 +459,24 @@ The project provides comprehensive outputs for both certificates and configurati
 - `certificate_ids`: List of certificate IDs from Venafi
 - `certificate_dns`: List of certificate DNs
 - `certificate_count`: Total number of certificates created
+
+### EC2 vSatellite Outputs
+
+- `vsatellite_instance_id`: EC2 instance ID for the vSatellite
+- `vsatellite_private_ip`: Private IP address of the instance
+- `vsatellite_subnet_id`: Subnet where the instance is deployed
+- `vsatellite_vpc_id`: VPC where the instance is deployed
+- `vsatellite_ssh_command`: Ready-to-use SSH command (if key pair configured)
+- `vsatellite_instance_connect_command`: AWS Instance Connect command
+- `vsatellite_web_url`: Web interface URL (accessible from within VPC)
+- `vsatellite_security_group_id`: Security group ID attached to the instance
+- `quick_access_summary`: Consolidated object with all access methods
+
+### Infrastructure Discovery Outputs
+
+- `discovered_vpc_cidr`: CIDR block of the discovered VPC
+- `discovered_vpc_name`: Name of the discovered VPC
+- `available_private_subnets`: List of all discovered private subnets
 
 ### Variable Outputs (excluding sensitive API key)
 
@@ -380,6 +604,10 @@ data "http" "cert_registration" {
    - Retrieved automatically in CodeBuild
    - Use environment variables for local development: `export TF_VAR_venafi_api_key="your-key"`
 4. **Venafi VCP Authentication**: Ensure proper API key permissions for certificate operations
+5. **Sensitive Information Protection**:
+   - Never commit real AWS account IDs, API keys, or domains to version control
+   - Use placeholder values in configuration files
+   - Set actual values via environment variables or AWS Secrets Manager
 
 ### Terraform Version
 

@@ -1,6 +1,42 @@
 # Example Terraform variables file
 # Copy this to terraform.tfvars and customize for your environment
 
-aws_region   = "us-east-1"
-environment  = "dev"
-project_name = "infra-tf-app"
+# AWS Configuration
+aws_region     = "us-east-1"
+aws_account_id = "123456789012"  # Replace with your AWS Account ID
+environment    = "dev"
+project_name   = "infra-tf-app"
+
+# Venafi Configuration for VCP (Venafi Control Plane)
+# For local development, you can either:
+# 1. Set the API key here (NOT recommended for security)
+# 2. Use environment variable: export TF_VAR_venafi_api_key="your-key"
+# 3. Retrieve from AWS Secrets Manager: export TF_VAR_venafi_api_key=$(aws secretsmanager get-secret-value --secret-id pki-tppl-api-key --query SecretString --output text)
+
+venafi_api_key        = ""  # Leave empty and use environment variable for security
+venafi_template_alias = "Default"
+venafi_cloud_url      = "https://api.venafi.cloud"  # VCP API endpoint
+
+# Certificate Configuration
+certificate_count      = 5              # Number of certificates to create
+certificate_domain     = "example.com"  # Replace with your domain
+certificate_algorithm  = "RSA"          # RSA or ECDSA
+certificate_rsa_bits   = 2048           # 2048, 3072, or 4096
+certificate_valid_days = 90             # Certificate validity period
+
+# EC2 Configuration for Venafi vSatellite
+# Infrastructure Discovery:
+# - VPC: Automatically finds VPC containing 'tf-infra-networking' in name with Environment=dev
+# - Subnet: Automatically selects private subnet within the discovered VPC
+# - Security Group: Automatically finds existing security group or uses VPC default
+
+vsatellite_instance_type   = "t3.large"           # Instance type (t3.large recommended for dev)
+vsatellite_root_volume_size = 50                  # Root volume size in GB
+key_pair_name              = ""                   # OPTIONAL: Your EC2 key pair name for SSH access (leave empty to use AWS Instance Connect only)
+vsatellite_name            = "venafi-vsatellite"  # Name for the vSatellite instance
+
+# Note: The following infrastructure will be automatically discovered:
+# - VPC: mv-tf-infra-networking-vpc (or similar containing 'tf-infra-networking')
+# - Environment: dev (matching your environment variable)
+# - Subnets: Private subnets within the VPC (identified by name or route table analysis)
+# - Security Groups: Existing groups containing project patterns or VPC default

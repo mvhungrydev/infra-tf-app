@@ -1,7 +1,7 @@
-# CodeBuild project for Terraform
+# CodeBuild project for Terraform infrastructure with EC2 vSatellite deployment
 resource "aws_codebuild_project" "terraform_build" {
   name         = "${var.project_name}-${var.environment}-terraform-build"
-  description  = "CodeBuild project for Terraform infrastructure"
+  description  = "CodeBuild project for Terraform infrastructure including Venafi certificates and EC2 vSatellite deployment"
   service_role = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/terraform-cicd-dev-codebuild-role"
 
   artifacts {
@@ -23,11 +23,27 @@ resource "aws_codebuild_project" "terraform_build" {
       name  = "ENVIRONMENT"
       value = var.environment
     }
+
+    environment_variable {
+      name  = "PROJECT_NAME"
+      value = var.project_name
+    }
+
+    environment_variable {
+      name  = "AWS_ACCOUNT_ID"
+      value = var.aws_account_id
+    }
   }
 
   source {
     type      = "CODEPIPELINE"
     buildspec = "buildspec.yml"
+  }
+
+  tags = {
+    Name        = "${var.project_name}-${var.environment}-terraform-build"
+    Environment = var.environment
+    Purpose     = "Terraform Infrastructure Deployment"
   }
 }
 

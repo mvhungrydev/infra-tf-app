@@ -89,3 +89,42 @@ variable "certificate_valid_days" {
   type        = number
   default     = 90
 }
+
+# EC2 Variables for Venafi vSatellite
+variable "vsatellite_instance_type" {
+  description = "EC2 instance type for Venafi vSatellite"
+  type        = string
+  default     = "t3.large"
+
+  validation {
+    condition = contains([
+      "t3.large", "t3.xlarge", 
+      "m5.large", "m5.xlarge",
+      "c5.large", "c5.xlarge"
+    ], var.vsatellite_instance_type)
+    error_message = "Instance type must meet vSatellite minimum requirements (2+ vCPUs, 8+ GB RAM)."
+  }
+}
+
+variable "vsatellite_root_volume_size" {
+  description = "Root volume size in GB for vSatellite instance"
+  type        = number
+  default     = 50
+
+  validation {
+    condition     = var.vsatellite_root_volume_size >= 20
+    error_message = "Root volume size must be at least 20 GB for vSatellite."
+  }
+}
+
+variable "key_pair_name" {
+  description = "Name of the EC2 Key Pair for SSH access to vSatellite instance"
+  type        = string
+  default     = ""
+}
+
+variable "vsatellite_name" {
+  description = "Name tag for the vSatellite instance"
+  type        = string
+  default     = "venafi-vsatellite"
+}

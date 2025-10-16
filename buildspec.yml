@@ -19,29 +19,55 @@ phases:
     commands:
       - echo "Retrieving Venafi API key from Secrets Manager..."
       - export TF_VAR_venafi_api_key=$(aws secretsmanager get-secret-value --secret-id pki-tppl-api-key --query SecretString --output text)
+      - echo "Setting up environment variables..."
+      - export TF_VAR_aws_account_id=$AWS_ACCOUNT_ID
+      - export TF_VAR_project_name=$PROJECT_NAME
+      - export TF_VAR_environment=$ENVIRONMENT
       - echo "Terraform initialization started on `date`"
       - terraform init
       - echo "Terraform validation started on `date`"
       - terraform validate
       - echo "Terraform plan started on `date`"
-      - terraform plan -out=tfplan
+      - terraform plan -out=tfplan -detailed-exitcode
 
   build:
     commands:
       - echo "Terraform apply started on `date`"
       - |
         if [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/main" ] || [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/master" ]; then
-          echo "Applying Terraform changes..."
+          echo "Applying Terraform changes on main/master branch..."
           terraform apply -auto-approve tfplan
+          echo "Deployment completed successfully!"
+          echo "=== Infrastructure Summary ==="
+          terraform output -json > infrastructure_summary.json
+          echo "Certificate Count: $(terraform output -raw certificate_count 2>/dev/null || echo 'N/A')"
+          echo "vSatellite Instance ID: $(terraform output -raw vsatellite_instance_id 2>/dev/null || echo 'N/A')"
+          echo "vSatellite Private IP: $(terraform output -raw vsatellite_private_ip 2>/dev/null || echo 'N/A')"
+          echo "Discovered VPC: $(terraform output -raw discovered_vpc_name 2>/dev/null || echo 'N/A')"
         else
           echo "Not on main/master branch, skipping apply"
+          echo "Branch: $CODEBUILD_WEBHOOK_HEAD_REF"
+          echo "Plan completed successfully - changes would be applied on main/master branch"
         fi
 
   post_build:
     commands:
       - echo "Terraform deployment completed on `date`"
-      - terraform output
+      - |
+        if [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/main" ] || [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/master" ]; then
+          echo "=== Quick Access Information ==="
+          echo "Instance Connect Command:"
+          terraform output -raw vsatellite_instance_connect_command 2>/dev/null || echo "EC2 instance not deployed"
+          echo ""
+          echo "Web Interface (from within VPC):"
+          terraform output -raw vsatellite_web_url 2>/dev/null || echo "EC2 instance not deployed"
+          echo ""
+          echo "=== All Outputs ==="
+          terraform output
+        fi
 
 artifacts:
   files:
     - "**/*"
+    - "infrastructure_summary.json"
+  name: terraform-infrastructure-artifacts
