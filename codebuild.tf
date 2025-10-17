@@ -2,10 +2,10 @@
 resource "aws_codebuild_project" "terraform_build" {
   name         = "${var.project_name}-${var.environment}-terraform-build"
   description  = "CodeBuild project for Terraform infrastructure including Venafi certificates and EC2 vSatellite deployment"
-  service_role = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/terraform-cicd-dev-codebuild-role"
+  service_role = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.project_name}-${var.environment}-codebuild-role"
 
   artifacts {
-    type = "CODEPIPELINE"
+    type = "NO_ARTIFACTS"
   }
 
   environment {
@@ -14,6 +14,7 @@ resource "aws_codebuild_project" "terraform_build" {
     type                        = "LINUX_CONTAINER"
     image_pull_credentials_type = "CODEBUILD"
 
+    # Core AWS Configuration
     environment_variable {
       name  = "AWS_DEFAULT_REGION"
       value = var.aws_region
@@ -31,19 +32,122 @@ resource "aws_codebuild_project" "terraform_build" {
 
     environment_variable {
       name  = "AWS_ACCOUNT_ID"
-      value = var.aws_account_id
+      value = "123456789012"  # Dummy value - will be overridden by actual account during build
+    }
+
+    environment_variable {
+      name  = "TERRAFORM_ACTION"
+      value = "apply"  # Default action: "apply" or "destroy"
+    }
+
+    # Venafi Configuration
+    environment_variable {
+      name  = "VENAFI_TEMPLATE_ALIAS"
+      value = var.venafi_template_alias
+    }
+
+    environment_variable {
+      name  = "VENAFI_CLOUD_URL"
+      value = var.venafi_cloud_url
+    }
+
+    # Certificate Configuration
+    environment_variable {
+      name  = "CERTIFICATE_COUNT"
+      value = var.certificate_count
+    }
+
+    environment_variable {
+      name  = "CERTIFICATE_DOMAIN"
+      value = var.certificate_domain
+    }
+
+    environment_variable {
+      name  = "CERTIFICATE_ALGORITHM"
+      value = var.certificate_algorithm
+    }
+
+    environment_variable {
+      name  = "CERTIFICATE_RSA_BITS"
+      value = var.certificate_rsa_bits
+    }
+
+    environment_variable {
+      name  = "CERTIFICATE_VALID_DAYS"
+      value = var.certificate_valid_days
+    }
+
+    # EC2 vSatellite Configuration
+    environment_variable {
+      name  = "VSATELLITE_INSTANCE_TYPE"
+      value = var.vsatellite_instance_type
+    }
+
+    environment_variable {
+      name  = "VSATELLITE_ROOT_VOLUME_SIZE"
+      value = var.vsatellite_root_volume_size
+    }
+
+    environment_variable {
+      name  = "KEY_PAIR_NAME"
+      value = var.key_pair_name
+    }
+
+    environment_variable {
+      name  = "VSATELLITE_NAME"
+      value = var.vsatellite_name
     }
   }
 
   source {
-    type      = "CODEPIPELINE"
-    buildspec = "buildspec.yml"
+    type            = "GITHUB"
+    location        = "https://github.com/mvhungrydev/infra-tf-app.git"
+    git_clone_depth = 1
+    buildspec       = "buildspec.yml"
+
+    git_submodules_config {
+      fetch_submodules = false
+    }
   }
+
+  # Set default source version to main branch
+  source_version = "main"
 
   tags = {
     Name        = "${var.project_name}-${var.environment}-terraform-build"
     Environment = var.environment
     Purpose     = "Terraform Infrastructure Deployment"
+  }
+}
+
+# GitHub webhook for automatic builds
+resource "aws_codebuild_webhook" "github_webhook" {
+  project_name = aws_codebuild_project.terraform_build.name
+  build_type   = "BUILD"
+
+  filter_group {
+    filter {
+      type    = "EVENT"
+      pattern = "PUSH"
+    }
+    filter {
+      type    = "HEAD_REF"
+      pattern = "^refs/heads/main$"
+    }
+  }
+
+  filter_group {
+    filter {
+      type    = "EVENT"
+      pattern = "PULL_REQUEST_CREATED"
+    }
+  }
+
+  filter_group {
+    filter {
+      type    = "EVENT"
+      pattern = "PULL_REQUEST_UPDATED"
+    }
   }
 }
 

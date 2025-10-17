@@ -14,7 +14,7 @@ variable "environment" {
 variable "project_name" {
   description = "Name of the project"
   type        = string
-  default     = "infra-tf-app"
+  default     = "terraform-cicd"
 }
 
 variable "aws_account_id" {

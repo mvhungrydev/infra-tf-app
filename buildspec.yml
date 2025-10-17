@@ -19,52 +19,168 @@ phases:
     commands:
       - echo "Retrieving Venafi API key from Secrets Manager..."
       - export TF_VAR_venafi_api_key=$(aws secretsmanager get-secret-value --secret-id pki-tppl-api-key --query SecretString --output text)
-      - echo "Setting up environment variables..."
-      - export TF_VAR_aws_account_id=$AWS_ACCOUNT_ID
-      - export TF_VAR_project_name=$PROJECT_NAME
-      - export TF_VAR_environment=$ENVIRONMENT
+      - echo "Setting up environment variables from CodeBuild and defaults..."
+      - echo "=== Environment Variable Configuration ==="
+      # AWS Configuration with secure defaults (get real account ID dynamically)
+      - export REAL_AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+      - export TF_VAR_aws_account_id=${REAL_AWS_ACCOUNT_ID}
+      - export TF_VAR_aws_region=${AWS_DEFAULT_REGION:-"us-east-1"}
+      - export TF_VAR_environment=${ENVIRONMENT:-"dev"}
+      - export TF_VAR_project_name=${PROJECT_NAME:-"project_name"}
+      # Venafi Configuration
+      - export TF_VAR_venafi_template_alias=${VENAFI_TEMPLATE_ALIAS:-"Default"}
+      - export TF_VAR_venafi_cloud_url=${VENAFI_CLOUD_URL:-"https://api.venafi.cloud"}
+      # Certificate Configuration
+      - export TF_VAR_certificate_count=${CERTIFICATE_COUNT:-"5"}
+      - export TF_VAR_certificate_domain=${CERTIFICATE_DOMAIN:-"example.com"}
+      - export TF_VAR_certificate_algorithm=${CERTIFICATE_ALGORITHM:-"RSA"}
+      - export TF_VAR_certificate_rsa_bits=${CERTIFICATE_RSA_BITS:-"2048"}
+      - export TF_VAR_certificate_valid_days=${CERTIFICATE_VALID_DAYS:-"90"}
+      # EC2 vSatellite Configuration
+      - export TF_VAR_vsatellite_instance_type=${VSATELLITE_INSTANCE_TYPE:-"t3.large"}
+      - export TF_VAR_vsatellite_root_volume_size=${VSATELLITE_ROOT_VOLUME_SIZE:-"50"}
+      - export TF_VAR_key_pair_name=${KEY_PAIR_NAME:-""}
+      - export TF_VAR_vsatellite_name=${VSATELLITE_NAME:-"venafi-vsatellite"}
+      - echo "✓ All environment variables configured with secure defaults"
+      - echo "Variables passed to Terraform:"
+      - echo "  - AWS Account ID: ${TF_VAR_aws_account_id}"
+      - echo "  - AWS Region: ${TF_VAR_aws_region}"
+      - echo "  - Environment: ${TF_VAR_environment}"
+      - echo "  - Project Name: ${TF_VAR_project_name}"
+      - echo "  - Certificate Count: ${TF_VAR_certificate_count}"
+      - echo "  - Certificate Domain: ${TF_VAR_certificate_domain}"
+      - echo "  - vSatellite Instance Type: ${TF_VAR_vsatellite_instance_type}"
+      - echo "  - Key Pair Name: ${TF_VAR_key_pair_name:-'<empty - will use Instance Connect>'}"
+      - echo "  - Terraform Action: ${TERRAFORM_ACTION:-'apply'}"
       - echo "Terraform initialization started on `date`"
       - terraform init
       - echo "Terraform validation started on `date`"
       - terraform validate
-      - echo "Terraform plan started on `date`"
-      - terraform plan -out=tfplan -detailed-exitcode
+      - echo "Determining Terraform action: ${TERRAFORM_ACTION:-'apply'}"
+      - |
+        if [ "${TERRAFORM_ACTION:-apply}" = "destroy" ]; then
+          echo "=== DESTROY MODE ==="
+          echo "⚠️  WARNING: This will DESTROY all infrastructure!"
+          echo "Terraform destroy plan started on $(date)"
+          terraform plan -destroy -out=tfplan -detailed-exitcode
+          export PLAN_EXIT_CODE=$?
+          echo "Destroy plan exit code: $PLAN_EXIT_CODE (0=no changes, 1=error, 2=changes to destroy)"
+        else
+          echo "=== APPLY MODE ==="
+          echo "Terraform plan started on $(date)"
+          terraform plan -out=tfplan -detailed-exitcode
+          export PLAN_EXIT_CODE=$?
+          echo "Plan exit code: $PLAN_EXIT_CODE (0=no changes, 1=error, 2=changes)"
+        fi
 
   build:
     commands:
-      - echo "Terraform apply started on `date`"
+      - echo "=== Build Phase Started ==="
+      - echo "Current branch: ${CODEBUILD_WEBHOOK_HEAD_REF:-$CODEBUILD_SOURCE_VERSION}"
+      - echo "Terraform Action: ${TERRAFORM_ACTION:-'apply'}"
       - |
-        if [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/main" ] || [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/master" ]; then
-          echo "Applying Terraform changes on main/master branch..."
-          terraform apply -auto-approve tfplan
-          echo "Deployment completed successfully!"
-          echo "=== Infrastructure Summary ==="
-          terraform output -json > infrastructure_summary.json
-          echo "Certificate Count: $(terraform output -raw certificate_count 2>/dev/null || echo 'N/A')"
-          echo "vSatellite Instance ID: $(terraform output -raw vsatellite_instance_id 2>/dev/null || echo 'N/A')"
-          echo "vSatellite Private IP: $(terraform output -raw vsatellite_private_ip 2>/dev/null || echo 'N/A')"
-          echo "Discovered VPC: $(terraform output -raw discovered_vpc_name 2>/dev/null || echo 'N/A')"
+        if [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/main" ] || [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/master" ] || [ "$CODEBUILD_SOURCE_VERSION" = "main" ] || [ "$CODEBUILD_SOURCE_VERSION" = "master" ]; then
+          if [ "${TERRAFORM_ACTION:-apply}" = "destroy" ]; then
+            echo "🔥 DESTROYING INFRASTRUCTURE on main/master branch..."
+            if [ "$PLAN_EXIT_CODE" = "2" ]; then
+              echo "⚠️  Executing Terraform DESTROY..."
+              echo "This will permanently delete all managed infrastructure!"
+              terraform apply -input=false -auto-approve tfplan
+              echo "💥 Infrastructure DESTROYED successfully!"
+              echo "=== Destruction Summary ==="
+              echo "All managed resources have been removed from AWS"
+              echo "{\"action\": \"destroy\", \"status\": \"completed\", \"timestamp\": \"$(date -Iseconds)\"}" > infrastructure_summary.json
+            elif [ "$PLAN_EXIT_CODE" = "0" ]; then
+              echo "ℹ️  No infrastructure to destroy - already clean"
+              echo "{\"action\": \"destroy\", \"status\": \"no_changes\", \"timestamp\": \"$(date -Iseconds)\"}" > infrastructure_summary.json
+            else
+              echo "❌ ERROR: Terraform destroy plan failed with exit code $PLAN_EXIT_CODE"
+              exit 1
+            fi
+          else
+            echo "🚀 DEPLOYING INFRASTRUCTURE on main/master branch..."
+            if [ "$PLAN_EXIT_CODE" = "2" ]; then
+              echo "Applying Terraform changes..."
+              terraform apply -input=false -auto-approve tfplan
+              echo "✅ Deployment completed successfully!"
+              echo "=== Infrastructure Summary ==="
+              terraform output -json > infrastructure_summary.json
+              echo "📊 Infrastructure Status:"
+              echo "  - Certificate Count: $(terraform output -raw certificate_count 2>/dev/null || echo 'N/A')"
+              echo "  - vSatellite Instance ID: $(terraform output -raw vsatellite_instance_id 2>/dev/null || echo 'N/A')"
+              echo "  - vSatellite Private IP: $(terraform output -raw vsatellite_private_ip 2>/dev/null || echo 'N/A')"
+              echo "  - Discovered VPC: $(terraform output -raw discovered_vpc_name 2>/dev/null || echo 'N/A')"
+              echo "  - VPC CIDR: $(terraform output -raw discovered_vpc_cidr 2>/dev/null || echo 'N/A')"
+            elif [ "$PLAN_EXIT_CODE" = "0" ]; then
+              echo "ℹ️  No changes detected in Terraform plan - infrastructure is up to date"
+              terraform output -json > infrastructure_summary.json 2>/dev/null || echo "{\"status\": \"no_changes\"}" > infrastructure_summary.json
+            else
+              echo "❌ ERROR: Terraform plan failed with exit code $PLAN_EXIT_CODE"
+              exit 1
+            fi
+          fi
         else
-          echo "Not on main/master branch, skipping apply"
-          echo "Branch: $CODEBUILD_WEBHOOK_HEAD_REF"
-          echo "Plan completed successfully - changes would be applied on main/master branch"
+          echo "Not on main/master branch - showing plan only"
+          echo "Branch: ${CODEBUILD_WEBHOOK_HEAD_REF:-$CODEBUILD_SOURCE_VERSION}"
+          if [ "${TERRAFORM_ACTION:-apply}" = "destroy" ]; then
+            echo "🔍 DESTROY PLAN completed successfully - would destroy infrastructure on main/master branch"
+            echo "{\"plan_only\": true, \"action\": \"destroy\", \"branch\": \"${CODEBUILD_WEBHOOK_HEAD_REF:-$CODEBUILD_SOURCE_VERSION}\"}" > infrastructure_summary.json
+          else
+            echo "✅ APPLY PLAN completed successfully - would apply changes on main/master branch"
+            echo "{\"plan_only\": true, \"action\": \"apply\", \"branch\": \"${CODEBUILD_WEBHOOK_HEAD_REF:-$CODEBUILD_SOURCE_VERSION}\"}" > infrastructure_summary.json
+          fi
         fi
 
   post_build:
     commands:
-      - echo "Terraform deployment completed on `date`"
+      - echo "=== Post-build Phase Started ==="
+      - echo "Build completed on $(date)"
+      - echo "Action executed: ${TERRAFORM_ACTION:-'apply'}"
       - |
-        if [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/main" ] || [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/master" ]; then
-          echo "=== Quick Access Information ==="
-          echo "Instance Connect Command:"
-          terraform output -raw vsatellite_instance_connect_command 2>/dev/null || echo "EC2 instance not deployed"
-          echo ""
-          echo "Web Interface (from within VPC):"
-          terraform output -raw vsatellite_web_url 2>/dev/null || echo "EC2 instance not deployed"
-          echo ""
-          echo "=== All Outputs ==="
-          terraform output
+        if [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/main" ] || [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/master" ] || [ "$CODEBUILD_SOURCE_VERSION" = "main" ] || [ "$CODEBUILD_SOURCE_VERSION" = "master" ]; then
+          if [ "${TERRAFORM_ACTION:-apply}" = "destroy" ]; then
+            echo "🔥 DESTROY ACTION COMPLETED"
+            echo "💀 All infrastructure has been removed"
+            echo "⚠️  WARNING: This was a destructive operation"
+            echo ""
+            echo "📋 What was destroyed:"
+            echo "  - Venafi certificates"
+            echo "  - EC2 vSatellite instance"
+            echo "  - Associated security groups (if created by Terraform)"
+            echo "  - All Terraform-managed resources"
+            echo ""
+            echo "ℹ️  Note: VPC, subnets, and existing security groups were discovered (not destroyed)"
+          else
+            if [ -f "infrastructure_summary.json" ] && [ "$(cat infrastructure_summary.json)" != "{}" ] && [ "$(cat infrastructure_summary.json)" != '{"status": "no_changes"}' ]; then
+              echo "🚀 APPLY ACTION COMPLETED - Quick Access Information:"
+              echo "📱 Instance Connect Command:"
+              terraform output -raw vsatellite_instance_connect_command 2>/dev/null || echo "   EC2 instance not deployed or output not available"
+              echo ""
+              echo "🌐 Web Interface (accessible from within VPC):"
+              terraform output -raw vsatellite_web_url 2>/dev/null || echo "   EC2 instance not deployed or output not available"
+              echo ""
+              echo "🔐 Security Group ID:"
+              terraform output -raw vsatellite_security_group_id 2>/dev/null || echo "   Security group not available"
+              echo ""
+              echo "📋 All Terraform Outputs:"
+              terraform output 2>/dev/null || echo "   No outputs available"
+            else
+              echo "ℹ️  No infrastructure changes were applied"
+            fi
+          fi
+        else
+          if [ "${TERRAFORM_ACTION:-apply}" = "destroy" ]; then
+            echo "🔍 DESTROY PLAN completed for feature branch"
+            echo "⚠️  This was a plan-only execution - no infrastructure was destroyed"
+          else
+            echo "ℹ️  APPLY PLAN completed for feature branch"
+            echo "📄 This was a plan-only execution - no infrastructure was modified"
+          fi
         fi
+      - echo "=== Build Summary ==="
+      - echo "✅ Build completed successfully"
+      - echo "🎯 Action: ${TERRAFORM_ACTION:-'apply'}"
+      - echo "📄 Artifacts will include infrastructure summary and all project files"
 
 artifacts:
   files:

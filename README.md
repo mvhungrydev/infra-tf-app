@@ -185,7 +185,7 @@ Edit `terraform.tfvars` with your specific values, including:
 aws_region     = "us-east-1"
 aws_account_id = "1234567891012"  # Replace with your AWS Account ID
 environment    = "dev"
-project_name   = "infra-tf-app"
+project_name   = "terraform-cicd"
 
 # Certificate configuration
 certificate_count  = 5
@@ -278,15 +278,46 @@ terraform destroy
 tfd
 ```
 
-## CodeBuild Integration
+## CodeBuild Integration with GitHub
+
+This project is integrated with GitHub for automatic CI/CD builds. The CodeBuild project is configured to automatically trigger builds on GitHub events.
+
+### GitHub Webhook Configuration
+
+The CodeBuild project automatically responds to:
+
+1. **Push to main branch**: Triggers infrastructure deployment
+2. **Pull Request creation**: Runs terraform plan for validation
+3. **Pull Request updates**: Re-runs plan with latest changes
+
+### Automatic Triggers
+
+```yaml
+# Automatic triggers configured:
+- Push to main branch → Plan and Apply infrastructure
+- Pull Requests → Plan only (validation)
+- Feature branches → Plan only (testing)
+```
 
 ### Manual Trigger
 
-You can manually trigger the CodeBuild project through the AWS Console or AWS CLI:
+You can also manually trigger the CodeBuild project:
 
 ```bash
+# Apply infrastructure (default action)
 aws codebuild start-build --project-name infra-tf-app-dev-terraform-build
+
+# Destroy infrastructure
+aws codebuild start-build \
+  --project-name infra-tf-app-dev-terraform-build \
+  --environment-variables-override name=TERRAFORM_ACTION,value=destroy
 ```
+
+### GitHub Repository
+
+- **Repository**: `https://github.com/mvhungrydev/infra-tf-app.git`
+- **Default Branch**: `main`
+- **Webhook**: Automatically configured for CI/CD
 
 ### Build Process
 
@@ -294,7 +325,17 @@ The buildspec.yml automatically:
 
 - Installs the latest version of Terraform dynamically
 - Runs `terraform init`, `validate`, and `plan` on all branches
-- Applies changes only on main/master branches with auto-approval
+- **Main/Master branches**: Executes terraform apply or destroy based on `TERRAFORM_ACTION`
+- **Feature branches**: Shows plan only (no infrastructure changes)
+- Supports both `apply` and `destroy` actions via environment variables
+
+### Terraform Actions
+
+| **Action** | **Trigger**         | **Behavior**                       |
+| ---------- | ------------------- | ---------------------------------- |
+| `apply`    | Push to main        | Plans and applies infrastructure   |
+| `destroy`  | Manual with env var | Plans and destroys infrastructure  |
+| Plan only  | Pull requests       | Validates changes without applying |
 
 ### Existing IAM Role
 
