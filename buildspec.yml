@@ -53,7 +53,7 @@ phases:
       - |
         if [ "${TERRAFORM_ACTION:-apply}" = "destroy" ]; then
           echo "=== DESTROY MODE ==="
-          echo "⚠️  WARNING: This will DESTROY all infrastructure!"
+          echo "WARNING: This will DESTROY all infrastructure!"
           echo "Terraform destroy plan started on $(date)"
           terraform plan -destroy -out=tfplan -detailed-exitcode
           export PLAN_EXIT_CODE=$?
@@ -74,34 +74,34 @@ phases:
       - |
         if [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/main" ] || [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/master" ] || [ "$CODEBUILD_SOURCE_VERSION" = "main" ] || [ "$CODEBUILD_SOURCE_VERSION" = "master" ]; then
           if [ "${TERRAFORM_ACTION:-apply}" = "destroy" ]; then
-            echo "🔥 DESTROYING INFRASTRUCTURE on main/master branch..."
+            echo "DESTROYING INFRASTRUCTURE on main/master branch..."
             if [ "$PLAN_EXIT_CODE" = "2" ]; then
-              echo "⚠️  Executing Terraform DESTROY..."
+              echo "Executing Terraform DESTROY..."
               echo "This will permanently delete all managed infrastructure!"
               terraform apply -input=false -auto-approve tfplan
-              echo "💥 Infrastructure DESTROYED successfully!"
+              echo "Infrastructure DESTROYED successfully!"
               echo "=== Destruction Summary ==="
               echo "All managed resources have been removed from AWS"
               echo "{\"action\": \"destroy\", \"status\": \"completed\", \"timestamp\": \"$(date -Iseconds)\"}" > infrastructure_summary.json
             elif [ "$PLAN_EXIT_CODE" = "0" ]; then
-              echo "ℹ️  No infrastructure to destroy - already clean"
+              echo "No infrastructure to destroy - already clean"
               echo "{\"action\": \"destroy\", \"status\": \"no_changes\", \"timestamp\": \"$(date -Iseconds)\"}" > infrastructure_summary.json
             else
               echo "❌ ERROR: Terraform destroy plan failed with exit code $PLAN_EXIT_CODE"
               exit 1
             fi
           else
-            echo "🚀 DEPLOYING INFRASTRUCTURE on main/master branch..."
+            echo "DEPLOYING INFRASTRUCTURE on main/master branch..."
             if [ "$PLAN_EXIT_CODE" = "2" ]; then
               echo "Applying Terraform changes..."
               terraform apply -input=false -auto-approve tfplan
-              echo "✅ Deployment completed successfully!"
+              echo "Deployment completed successfully!"
               echo "=== Infrastructure Summary ==="
               terraform output -json > infrastructure_summary.json
-              echo "📊 Infrastructure Status:"
+              echo "Infrastructure Status:"
               echo "  - Certificate Count: $(terraform output -raw certificate_count 2>/dev/null || echo 'N/A')"
             elif [ "$PLAN_EXIT_CODE" = "0" ]; then
-              echo "ℹ️  No changes detected in Terraform plan - infrastructure is up to date"
+              echo "No changes detected in Terraform plan - infrastructure is up to date"
               terraform output -json > infrastructure_summary.json 2>/dev/null || echo "{\"status\": \"no_changes\"}" > infrastructure_summary.json
             else
               echo "❌ ERROR: Terraform plan failed with exit code $PLAN_EXIT_CODE"
@@ -112,10 +112,10 @@ phases:
           echo "Not on main/master branch - showing plan only"
           echo "Branch: ${CODEBUILD_WEBHOOK_HEAD_REF:-$CODEBUILD_SOURCE_VERSION}"
           if [ "${TERRAFORM_ACTION:-apply}" = "destroy" ]; then
-            echo "🔍 DESTROY PLAN completed successfully - would destroy infrastructure on main/master branch"
+            echo "DESTROY PLAN completed successfully - would destroy infrastructure on main/master branch"
             echo "{\"plan_only\": true, \"action\": \"destroy\", \"branch\": \"${CODEBUILD_WEBHOOK_HEAD_REF:-$CODEBUILD_SOURCE_VERSION}\"}" > infrastructure_summary.json
           else
-            echo "✅ APPLY PLAN completed successfully - would apply changes on main/master branch"
+            echo "APPLY PLAN completed successfully - would apply changes on main/master branch"
             echo "{\"plan_only\": true, \"action\": \"apply\", \"branch\": \"${CODEBUILD_WEBHOOK_HEAD_REF:-$CODEBUILD_SOURCE_VERSION}\"}" > infrastructure_summary.json
           fi
         fi
@@ -128,48 +128,32 @@ phases:
       - |
         if [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/main" ] || [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/master" ] || [ "$CODEBUILD_SOURCE_VERSION" = "main" ] || [ "$CODEBUILD_SOURCE_VERSION" = "master" ]; then
           if [ "${TERRAFORM_ACTION:-apply}" = "destroy" ]; then
-            echo "🔥 DESTROY ACTION COMPLETED"
-            echo "💀 All infrastructure has been removed"
-            echo "⚠️  WARNING: This was a destructive operation"
+            echo "DESTROY ACTION COMPLETED"
+            echo "All infrastructure has been removed"
+            echo "WARNING: This was a destructive operation"
             echo ""
-            echo "📋 What was destroyed:"
+            echo "What was destroyed:"
             echo "  - Venafi certificates"
-            echo "  - EC2 vSatellite instance"
-            echo "  - Associated security groups (if created by Terraform)"
             echo "  - All Terraform-managed resources"
             echo ""
-            echo "ℹ️  Note: VPC, subnets, and existing security groups were discovered (not destroyed)"
           else
-            if [ -f "infrastructure_summary.json" ] && [ "$(cat infrastructure_summary.json)" != "{}" ] && [ "$(cat infrastructure_summary.json)" != '{"status": "no_changes"}' ]; then
-              echo "🚀 APPLY ACTION COMPLETED - Quick Access Information:"
-              echo "📱 Instance Connect Command:"
-              terraform output -raw vsatellite_instance_connect_command 2>/dev/null || echo "   EC2 instance not deployed or output not available"
-              echo ""
-              echo "🌐 Web Interface (accessible from within VPC):"
-              terraform output -raw vsatellite_web_url 2>/dev/null || echo "   EC2 instance not deployed or output not available"
-              echo ""
-              echo "🔐 Security Group ID:"
-              terraform output -raw vsatellite_security_group_id 2>/dev/null || echo "   Security group not available"
-              echo ""
-              echo "📋 All Terraform Outputs:"
-              terraform output 2>/dev/null || echo "   No outputs available"
-            else
-              echo "ℹ️  No infrastructure changes were applied"
-            fi
+            echo "APPLY ACTION COMPLETED"
+            echo "Certificate Management Outputs:"
+            terraform output 2>/dev/null || echo "   No outputs available"
           fi
         else
           if [ "${TERRAFORM_ACTION:-apply}" = "destroy" ]; then
-            echo "🔍 DESTROY PLAN completed for feature branch"
-            echo "⚠️  This was a plan-only execution - no infrastructure was destroyed"
+            echo "DESTROY PLAN completed for feature branch"
+            echo "This was a plan-only execution - no infrastructure was destroyed"
           else
-            echo "ℹ️  APPLY PLAN completed for feature branch"
-            echo "📄 This was a plan-only execution - no infrastructure was modified"
+            echo "APPLY PLAN completed for feature branch"
+            echo "This was a plan-only execution - no infrastructure was modified"
           fi
         fi
       - echo "=== Build Summary ==="
-      - echo "✅ Build completed successfully"
-      - echo "🎯 Action: ${TERRAFORM_ACTION:-'apply'}"
-      - echo "📄 Artifacts will include infrastructure summary and all project files"
+      - echo "Build completed successfully"
+      - echo "Action: ${TERRAFORM_ACTION:-'apply'}"
+      - echo "Artifacts will include infrastructure summary and all project files"
 
 artifacts:
   files:
