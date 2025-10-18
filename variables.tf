@@ -53,7 +53,7 @@ variable "venafi_cloud_url" {
 variable "certificate_count" {
   description = "Number of certificates to create"
   type        = number
-  default     = 3
+  default     = 30
 }
 
 variable "certificate_domain" {
