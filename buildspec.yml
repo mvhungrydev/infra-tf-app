@@ -19,6 +19,7 @@ phases:
     commands:
       - echo "Retrieving Venafi API key from Secrets Manager..."
       - export TF_VAR_venafi_api_key=$(aws secretsmanager get-secret-value --secret-id pki-tppl-api-key --query SecretString --output text)
+      - echo "Venafi API key retrieved successfully"
       - echo "Setting up environment variables..."
       - export REAL_AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
       - export TF_VAR_aws_account_id=${REAL_AWS_ACCOUNT_ID}
@@ -32,6 +33,8 @@ phases:
       - export TF_VAR_certificate_algorithm=${CERTIFICATE_ALGORITHM:-"RSA"}
       - export TF_VAR_certificate_rsa_bits=${CERTIFICATE_RSA_BITS:-"2048"}
       - export TF_VAR_certificate_valid_days=${CERTIFICATE_VALID_DAYS:-"90"}
+      - echo "Environment variables configured"
+      - echo "Venafi API Key length: ${#TF_VAR_venafi_api_key}"
       - echo "Terraform initialization..."
       - terraform init
       - terraform validate
