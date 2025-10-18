@@ -24,19 +24,5 @@ certificate_algorithm  = "RSA"          # RSA or ECDSA
 certificate_rsa_bits   = 2048           # 2048, 3072, or 4096
 certificate_valid_days = 90             # Certificate validity period
 
-# EC2 Configuration for Venafi vSatellite
-# Infrastructure Discovery:
-# - VPC: Automatically finds VPC containing 'tf-infra-networking' in name with Environment=dev
-# - Subnet: Automatically selects private subnet within the discovered VPC
-# - Security Group: Automatically finds existing security group or uses VPC default
-
-vsatellite_instance_type   = "t3.large"           # Instance type (t3.large recommended for dev)
-vsatellite_root_volume_size = 50                  # Root volume size in GB
-key_pair_name              = ""                   # OPTIONAL: Your EC2 key pair name for SSH access (leave empty to use AWS Instance Connect only)
-vsatellite_name            = "venafi-vsatellite"  # Name for the vSatellite instance
-
-# Note: The following infrastructure will be automatically discovered:
-# - VPC: mv-tf-infra-networking-vpc (or similar containing 'tf-infra-networking')
-# - Environment: dev (matching your environment variable)
-# - Subnets: Private subnets within the VPC (identified by name or route table analysis)
-# - Security Groups: Existing groups containing project patterns or VPC default
+# GitHub Configuration
+github_repo_url = "https://github.com/your-org/your-repo.git"  # Replace with your GitHub repository URL

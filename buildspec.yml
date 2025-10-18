@@ -36,11 +36,6 @@ phases:
       - export TF_VAR_certificate_algorithm=${CERTIFICATE_ALGORITHM:-"RSA"}
       - export TF_VAR_certificate_rsa_bits=${CERTIFICATE_RSA_BITS:-"2048"}
       - export TF_VAR_certificate_valid_days=${CERTIFICATE_VALID_DAYS:-"90"}
-      # EC2 vSatellite Configuration
-      - export TF_VAR_vsatellite_instance_type=${VSATELLITE_INSTANCE_TYPE:-"t3.large"}
-      - export TF_VAR_vsatellite_root_volume_size=${VSATELLITE_ROOT_VOLUME_SIZE:-"50"}
-      - export TF_VAR_key_pair_name=${KEY_PAIR_NAME:-""}
-      - export TF_VAR_vsatellite_name=${VSATELLITE_NAME:-"venafi-vsatellite"}
       - echo "✓ All environment variables configured with secure defaults"
       - echo "Variables passed to Terraform:"
       - echo "  - AWS Account ID: ${TF_VAR_aws_account_id}"
@@ -49,8 +44,6 @@ phases:
       - echo "  - Project Name: ${TF_VAR_project_name}"
       - echo "  - Certificate Count: ${TF_VAR_certificate_count}"
       - echo "  - Certificate Domain: ${TF_VAR_certificate_domain}"
-      - echo "  - vSatellite Instance Type: ${TF_VAR_vsatellite_instance_type}"
-      - echo "  - Key Pair Name: ${TF_VAR_key_pair_name:-'<empty - will use Instance Connect>'}"
       - echo "  - Terraform Action: ${TERRAFORM_ACTION:-'apply'}"
       - echo "Terraform initialization started on `date`"
       - terraform init
@@ -107,10 +100,6 @@ phases:
               terraform output -json > infrastructure_summary.json
               echo "📊 Infrastructure Status:"
               echo "  - Certificate Count: $(terraform output -raw certificate_count 2>/dev/null || echo 'N/A')"
-              echo "  - vSatellite Instance ID: $(terraform output -raw vsatellite_instance_id 2>/dev/null || echo 'N/A')"
-              echo "  - vSatellite Private IP: $(terraform output -raw vsatellite_private_ip 2>/dev/null || echo 'N/A')"
-              echo "  - Discovered VPC: $(terraform output -raw discovered_vpc_name 2>/dev/null || echo 'N/A')"
-              echo "  - VPC CIDR: $(terraform output -raw discovered_vpc_cidr 2>/dev/null || echo 'N/A')"
             elif [ "$PLAN_EXIT_CODE" = "0" ]; then
               echo "ℹ️  No changes detected in Terraform plan - infrastructure is up to date"
               terraform output -json > infrastructure_summary.json 2>/dev/null || echo "{\"status\": \"no_changes\"}" > infrastructure_summary.json

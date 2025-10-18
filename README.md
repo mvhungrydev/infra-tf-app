@@ -1,18 +1,16 @@
-# Terraform Infrastructure with AWS CodeBuild, Venafi Control Plane (VCP), and EC2 vSatellite
+# Terraform Infrastructure with AWS CodeBuild and Venafi Control Plane (VCP)
 
-This project contains Terraform infrastructure code that is designed to be built and deployed using AWS CodeBuild. The Terraform state is stored in an S3 bucket without DynamoDB state locking. The project includes integration with Venafi Control Plane (VCP) for automated certificate management with support for multiple certificate creation, plus EC2 instance deployment for Venafi vSatellite with automatic VPC/subnet discovery.
+This project contains Terraform infrastructure code that is designed to be built and deployed using AWS CodeBuild. The Terraform state is stored in an S3 bucket without DynamoDB state locking. The project includes integration with Venafi Control Plane (VCP) for automated certificate management with support for multiple certificate creation.
 
 ## Project Structure
 
 ```
 .
 ├── main.tf                    # Main Terraform configuration with AWS and Venafi providers
-├── variables.tf               # Input variables including Venafi VCP and EC2 configuration
-├── outputs.tf                 # Output values for certificates, variables, and EC2 instance details
-├── ec2-vsatellite.tf         # EC2 instance configuration for Venafi vSatellite with VPC discovery
-├── user-data-vsatellite.sh   # User data script for vSatellite installation
-├── codebuild.tf              # CodeBuild project using existing IAM role
-├── buildspec.yml             # CodeBuild build specification with latest Terraform
+├── variables.tf               # Input variables including Venafi VCP configuration
+├── outputs.tf                 # Output values for certificates and variables
+├── codebuild.tf               # AWS CodeBuild project configuration
+├── buildspec.yml              # CodeBuild specification file
 ├── terraform.tfvars.example  # Example variables file
 ├── terraform.tfvars          # Your actual variables file (not in git)
 ├── .gitignore               # Git ignore patterns
@@ -57,11 +55,9 @@ This project contains Terraform infrastructure code that is designed to be built
 ### AWS IAM Roles & Permissions
 
 9. **Existing CodeBuild IAM Role**: `terraform-cicd-dev-codebuild-role`
-   - Must have permissions for EC2, VPC, S3, Secrets Manager, and other AWS services
+   - Must have permissions for S3, Secrets Manager, and other AWS services
    - Must be able to assume roles and create/modify infrastructure
 10. **Local Development Permissions**: Your AWS user/role must have permissions for:
-    - EC2 (instances, security groups, key pairs)
-    - VPC (describe VPCs, subnets, route tables)
     - S3 (state bucket access)
     - Secrets Manager (read pki-tppl-api-key)
     - IAM (read roles, policies)
@@ -94,42 +90,16 @@ This project contains Terraform infrastructure code that is designed to be built
 16. **Security Groups**: Existing security groups within the VPC (optional)
     - The configuration will discover existing security groups
     - Falls back to VPC default security group if none found
-17. **NAT Gateway/Instance**: For private subnet internet access (required for vSatellite to communicate with Venafi Cloud)
-
-### SSH Access (Optional)
-
-18. **EC2 Key Pair**: SSH key pair for traditional SSH access (optional)
-    - Can be created in AWS Console or CLI
-    - Alternatively, use AWS Instance Connect (no key pair needed)
-    ```bash
-    # Create key pair
-    aws ec2 create-key-pair \
-        --key-name my-terraform-key \
-        --query 'KeyMaterial' \
-        --output text > ~/.ssh/my-terraform-key.pem
-    chmod 400 ~/.ssh/my-terraform-key.pem
-    ```
-
-### Network Access
-
-19. **VPC Connectivity**: Method to access private subnet resources
-    - VPN connection to your AWS VPC, OR
-    - Bastion host/jump server, OR
-    - AWS VPC peering, OR
-    - AWS Direct Connect
-20. **AWS Instance Connect**: For secure SSH access to private instances
-    - Enabled in us-east-1 region
-    - No additional setup required
 
 ### Development Environment
 
-21. **Shell Environment**: bash, zsh, or compatible shell for aliases
-22. **Internet Access**: For downloading Terraform, accessing Venafi Cloud, and AWS APIs
+17. **Shell Environment**: bash, zsh, or compatible shell for aliases
+18. **Internet Access**: For downloading Terraform, accessing Venafi Cloud, and AWS APIs
 
 ### Monitoring & Logging (Recommended)
 
-23. **CloudWatch**: For monitoring CodeBuild logs and EC2 instances
-24. **VPC Flow Logs**: For network troubleshooting (optional)
+19. **CloudWatch**: For monitoring CodeBuild logs
+20. **VPC Flow Logs**: For network troubleshooting (optional)
 
 ### Validation Commands
 

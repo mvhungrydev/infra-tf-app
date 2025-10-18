@@ -1,7 +1,7 @@
-# CodeBuild project for Terraform infrastructure with EC2 vSatellite deployment
+# CodeBuild project for Terraform infrastructure with Venafi certificate management
 resource "aws_codebuild_project" "terraform_build" {
   name         = "${var.project_name}-${var.environment}-terraform-build"
-  description  = "CodeBuild project for Terraform infrastructure including Venafi certificates and EC2 vSatellite deployment"
+  description  = "CodeBuild project for Terraform infrastructure including Venafi certificate management"
   service_role = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.project_name}-${var.environment}-codebuild-role"
 
   artifacts {
@@ -32,7 +32,7 @@ resource "aws_codebuild_project" "terraform_build" {
 
     environment_variable {
       name  = "AWS_ACCOUNT_ID"
-      value = "123456789012"  # Dummy value - will be overridden by actual account during build
+      value = var.aws_account_id
     }
 
     environment_variable {
@@ -76,32 +76,11 @@ resource "aws_codebuild_project" "terraform_build" {
       name  = "CERTIFICATE_VALID_DAYS"
       value = var.certificate_valid_days
     }
-
-    # EC2 vSatellite Configuration
-    environment_variable {
-      name  = "VSATELLITE_INSTANCE_TYPE"
-      value = var.vsatellite_instance_type
-    }
-
-    environment_variable {
-      name  = "VSATELLITE_ROOT_VOLUME_SIZE"
-      value = var.vsatellite_root_volume_size
-    }
-
-    environment_variable {
-      name  = "KEY_PAIR_NAME"
-      value = var.key_pair_name
-    }
-
-    environment_variable {
-      name  = "VSATELLITE_NAME"
-      value = var.vsatellite_name
-    }
   }
 
   source {
     type            = "GITHUB"
-    location        = "https://github.com/mvhungrydev/infra-tf-app.git"
+    location        = var.github_repo_url
     git_clone_depth = 1
     buildspec       = "buildspec.yml"
 
