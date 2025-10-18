@@ -19,144 +19,36 @@ phases:
     commands:
       - echo "Retrieving Venafi API key from Secrets Manager..."
       - export TF_VAR_venafi_api_key=$(aws secretsmanager get-secret-value --secret-id pki-tppl-api-key --query SecretString --output text)
-      - echo "Setting up environment variables from CodeBuild and defaults..."
-      - echo "=== Environment Variable Configuration ==="
-      - echo "AWS Configuration with secure defaults (get real account ID dynamically)"
+      - echo "Setting up environment variables..."
       - export REAL_AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
       - export TF_VAR_aws_account_id=${REAL_AWS_ACCOUNT_ID}
       - export TF_VAR_aws_region=${AWS_DEFAULT_REGION:-"us-east-1"}
       - export TF_VAR_environment=${ENVIRONMENT:-"dev"}
       - export TF_VAR_project_name=${PROJECT_NAME:-"project_name"}
-      - echo "Venafi Configuration"
       - export TF_VAR_venafi_template_alias=${VENAFI_TEMPLATE_ALIAS:-"Default"}
       - export TF_VAR_venafi_cloud_url=${VENAFI_CLOUD_URL:-"https://api.venafi.cloud"}
-      - echo "Certificate Configuration"
       - export TF_VAR_certificate_count=${CERTIFICATE_COUNT:-"5"}
       - export TF_VAR_certificate_domain=${CERTIFICATE_DOMAIN:-"example.com"}
       - export TF_VAR_certificate_algorithm=${CERTIFICATE_ALGORITHM:-"RSA"}
       - export TF_VAR_certificate_rsa_bits=${CERTIFICATE_RSA_BITS:-"2048"}
       - export TF_VAR_certificate_valid_days=${CERTIFICATE_VALID_DAYS:-"90"}
-      - echo "All environment variables configured with secure defaults"
-      - echo "Variables passed to Terraform:"
-      - echo "  - AWS Account ID: ${TF_VAR_aws_account_id}"
-      - echo "  - AWS Region: ${TF_VAR_aws_region}"
-      - echo "  - Environment: ${TF_VAR_environment}"
-      - echo "  - Project Name: ${TF_VAR_project_name}"
-      - echo "  - Certificate Count: ${TF_VAR_certificate_count}"
-      - echo "  - Certificate Domain: ${TF_VAR_certificate_domain}"
-      - echo "  - Terraform Action: ${TERRAFORM_ACTION:-'apply'}"
-      - echo "Terraform initialization started on `date`"
+      - echo "Terraform initialization..."
       - terraform init
-      - echo "Terraform validation started on `date`"
       - terraform validate
-      - echo "Determining Terraform action: ${TERRAFORM_ACTION:-'apply'}"
-      - |
-        if [ "${TERRAFORM_ACTION:-apply}" = "destroy" ]; then
-          echo "=== DESTROY MODE ==="
-          echo "WARNING: This will DESTROY all infrastructure!"
-          echo "Terraform destroy plan started on $(date)"
-          terraform plan -destroy -out=tfplan -detailed-exitcode
-          export PLAN_EXIT_CODE=$?
-          echo "Destroy plan exit code: $PLAN_EXIT_CODE (0=no changes, 1=error, 2=changes to destroy)"
-        else
-          echo "=== APPLY MODE ==="
-          echo "Terraform plan started on $(date)"
-          terraform plan -out=tfplan -detailed-exitcode
-          export PLAN_EXIT_CODE=$?
-          echo "Plan exit code: $PLAN_EXIT_CODE (0=no changes, 1=error, 2=changes)"
-        fi
+      - terraform plan -out=tfplan
 
   build:
     commands:
-      - echo "=== Build Phase Started ==="
-      - echo "Current branch: ${CODEBUILD_WEBHOOK_HEAD_REF:-$CODEBUILD_SOURCE_VERSION}"
-      - echo "Terraform Action: ${TERRAFORM_ACTION:-'apply'}"
-      - |
-        if [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/main" ] || [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/master" ] || [ "$CODEBUILD_SOURCE_VERSION" = "main" ] || [ "$CODEBUILD_SOURCE_VERSION" = "master" ]; then
-          if [ "${TERRAFORM_ACTION:-apply}" = "destroy" ]; then
-            echo "DESTROYING INFRASTRUCTURE on main/master branch..."
-            if [ "$PLAN_EXIT_CODE" = "2" ]; then
-              echo "Executing Terraform DESTROY..."
-              echo "This will permanently delete all managed infrastructure!"
-              terraform apply -input=false -auto-approve tfplan
-              echo "Infrastructure DESTROYED successfully!"
-              echo "=== Destruction Summary ==="
-              echo "All managed resources have been removed from AWS"
-              echo "{\"action\": \"destroy\", \"status\": \"completed\", \"timestamp\": \"$(date -Iseconds)\"}" > infrastructure_summary.json
-            elif [ "$PLAN_EXIT_CODE" = "0" ]; then
-              echo "No infrastructure to destroy - already clean"
-              echo "{\"action\": \"destroy\", \"status\": \"no_changes\", \"timestamp\": \"$(date -Iseconds)\"}" > infrastructure_summary.json
-            else
-              echo "❌ ERROR: Terraform destroy plan failed with exit code $PLAN_EXIT_CODE"
-              exit 1
-            fi
-          else
-            echo "DEPLOYING INFRASTRUCTURE on main/master branch..."
-            if [ "$PLAN_EXIT_CODE" = "2" ]; then
-              echo "Applying Terraform changes..."
-              terraform apply -input=false -auto-approve tfplan
-              echo "Deployment completed successfully!"
-              echo "=== Infrastructure Summary ==="
-              terraform output -json > infrastructure_summary.json
-              echo "Infrastructure Status:"
-              echo "  - Certificate Count: $(terraform output -raw certificate_count 2>/dev/null || echo 'N/A')"
-            elif [ "$PLAN_EXIT_CODE" = "0" ]; then
-              echo "No changes detected in Terraform plan - infrastructure is up to date"
-              terraform output -json > infrastructure_summary.json 2>/dev/null || echo "{\"status\": \"no_changes\"}" > infrastructure_summary.json
-            else
-              echo "❌ ERROR: Terraform plan failed with exit code $PLAN_EXIT_CODE"
-              exit 1
-            fi
-          fi
-        else
-          echo "Not on main/master branch - showing plan only"
-          echo "Branch: ${CODEBUILD_WEBHOOK_HEAD_REF:-$CODEBUILD_SOURCE_VERSION}"
-          if [ "${TERRAFORM_ACTION:-apply}" = "destroy" ]; then
-            echo "DESTROY PLAN completed successfully - would destroy infrastructure on main/master branch"
-            echo "{\"plan_only\": true, \"action\": \"destroy\", \"branch\": \"${CODEBUILD_WEBHOOK_HEAD_REF:-$CODEBUILD_SOURCE_VERSION}\"}" > infrastructure_summary.json
-          else
-            echo "APPLY PLAN completed successfully - would apply changes on main/master branch"
-            echo "{\"plan_only\": true, \"action\": \"apply\", \"branch\": \"${CODEBUILD_WEBHOOK_HEAD_REF:-$CODEBUILD_SOURCE_VERSION}\"}" > infrastructure_summary.json
-          fi
-        fi
+      - echo "=== Build Phase ==="
+      - terraform apply -input=false -auto-approve tfplan
 
   post_build:
     commands:
-      - echo "=== Post-build Phase Started ==="
-      - echo "Build completed on $(date)"
-      - echo "Action executed: ${TERRAFORM_ACTION:-'apply'}"
-      - |
-        if [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/main" ] || [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/master" ] || [ "$CODEBUILD_SOURCE_VERSION" = "main" ] || [ "$CODEBUILD_SOURCE_VERSION" = "master" ]; then
-          if [ "${TERRAFORM_ACTION:-apply}" = "destroy" ]; then
-            echo "DESTROY ACTION COMPLETED"
-            echo "All infrastructure has been removed"
-            echo "WARNING: This was a destructive operation"
-            echo ""
-            echo "What was destroyed:"
-            echo "  - Venafi certificates"
-            echo "  - All Terraform-managed resources"
-            echo ""
-          else
-            echo "APPLY ACTION COMPLETED"
-            echo "Certificate Management Outputs:"
-            terraform output 2>/dev/null || echo "   No outputs available"
-          fi
-        else
-          if [ "${TERRAFORM_ACTION:-apply}" = "destroy" ]; then
-            echo "DESTROY PLAN completed for feature branch"
-            echo "This was a plan-only execution - no infrastructure was destroyed"
-          else
-            echo "APPLY PLAN completed for feature branch"
-            echo "This was a plan-only execution - no infrastructure was modified"
-          fi
-        fi
-      - echo "=== Build Summary ==="
-      - echo "Build completed successfully"
-      - echo "Action: ${TERRAFORM_ACTION:-'apply'}"
-      - echo "Artifacts will include infrastructure summary and all project files"
+      - echo "=== Post-build Phase ==="
+      - terraform output -json > infrastructure_summary.json 2>/dev/null || echo "{\"status\": \"completed\"}" > infrastructure_summary.json
 
 artifacts:
   files:
     - "**/*"
-    - "infrastructure_summary.json"
+    - infrastructure_summary.json
   name: terraform-infrastructure-artifacts
