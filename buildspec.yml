@@ -34,7 +34,6 @@ phases:
       - export TF_VAR_certificate_rsa_bits=${CERTIFICATE_RSA_BITS:-"2048"}
       - export TF_VAR_certificate_valid_days=${CERTIFICATE_VALID_DAYS:-"90"}
       - echo "Environment variables configured"
-      - echo "Venafi API Key length: ${#TF_VAR_venafi_api_key}"
       - echo "Terraform initialization..."
       - terraform init
       - terraform validate
