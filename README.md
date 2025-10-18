@@ -115,8 +115,6 @@ aws s3 ls s3://mv-tf-pipeline-state
 # Check Venafi API key in Secrets Manager
 aws secretsmanager get-secret-value --secret-id pki-tppl-api-key
 
-# Verify VPC exists
-aws ec2 describe-vpcs --filters "Name=tag:Name,Values=*tf-infra-networking*"
 
 # Test Terraform installation
 terraform version
@@ -147,7 +145,6 @@ Edit `terraform.tfvars` with your specific values, including:
 - AWS region, account ID, and environment settings
 - Venafi API key and VCP configuration
 - Certificate domain and count preferences
-- EC2 vSatellite configuration including key pair for SSH access
 
 **Important Variables to Configure:**
 
@@ -160,11 +157,6 @@ project_name   = "terraform-cicd"
 # Certificate configuration
 certificate_count  = 5
 certificate_domain = "example.com"  # Replace with your domain
-
-# EC2 vSatellite configuration
-key_pair_name              = "my-key-pair"        # REQUIRED: Your EC2 key pair
-vsatellite_instance_type   = "t3.large"
-vsatellite_root_volume_size = 50
 ```
 
 ### 3. Venafi Configuration
@@ -265,23 +257,22 @@ The CodeBuild project automatically responds to:
 ```yaml
 # Automatic triggers configured:
 - Push to main branch → Plan and Apply infrastructure
-- Pull Requests → Plan only (validation)
-- Feature branches → Plan only (testing)
+- Pull Requests → Plan and Apply (same as main branch)
+- Feature branches → Plan and Apply (same as main branch)
 ```
+
+**Note**: Currently all branch pushes trigger the same apply workflow. There is no differentiation between branches or pull requests.
 
 ### Manual Trigger
 
-You can also manually trigger the CodeBuild project:
+You can manually trigger the CodeBuild project:
 
 ```bash
-# Apply infrastructure (default action)
+# Apply infrastructure (only supported action)
 aws codebuild start-build --project-name infra-tf-app-dev-terraform-build
-
-# Destroy infrastructure
-aws codebuild start-build \
-  --project-name infra-tf-app-dev-terraform-build \
-  --environment-variables-override name=TERRAFORM_ACTION,value=destroy
 ```
+
+**Note**: The current buildspec only supports terraform apply operations. Destroy operations are not currently implemented.
 
 ### GitHub Repository
 
@@ -295,101 +286,20 @@ The buildspec.yml automatically:
 
 - Installs the latest version of Terraform dynamically
 - Runs `terraform init`, `validate`, and `plan` on all branches
-- **Main/Master branches**: Executes terraform apply or destroy based on `TERRAFORM_ACTION`
-- **Feature branches**: Shows plan only (no infrastructure changes)
-- Supports both `apply` and `destroy` actions via environment variables
+- **All branches**: Executes terraform apply (infrastructure deployment only)
+- **No destroy support**: The current buildspec does not support terraform destroy operations
 
 ### Terraform Actions
 
-| **Action** | **Trigger**         | **Behavior**                       |
-| ---------- | ------------------- | ---------------------------------- |
-| `apply`    | Push to main        | Plans and applies infrastructure   |
-| `destroy`  | Manual with env var | Plans and destroys infrastructure  |
-| Plan only  | Pull requests       | Validates changes without applying |
+| **Action** | **Trigger**        | **Behavior**                     |
+| ---------- | ------------------ | -------------------------------- |
+| `apply`    | Push to any branch | Plans and applies infrastructure |
+| `destroy`  | Not supported      | Use local terraform destroy      |
+| Plan only  | Not implemented    | All pushes trigger apply         |
 
 ### Existing IAM Role
 
 The CodeBuild project uses the existing `terraform-cicd-dev-codebuild-role` instead of creating a new one.
-
-## EC2 vSatellite Deployment
-
-This project automatically deploys an EC2 instance for Venafi vSatellite with intelligent infrastructure discovery.
-
-### Infrastructure Discovery
-
-The vSatellite deployment automatically discovers existing infrastructure:
-
-#### VPC Discovery
-
-```hcl
-# Finds VPC containing 'tf-infra-networking' in name and matching environment
-data "aws_vpcs" "infra_tf" {
-  tags = {
-    Name        = "*tf-infra-networking*"
-    Environment = var.environment  # "dev"
-  }
-}
-```
-
-#### Subnet Discovery
-
-- **Primary**: Searches for subnets with "private" or "Private" in the name
-- **Fallback**: Analyzes route tables to identify private subnets (no internet gateway routes)
-- **Selection**: Automatically selects the first available private subnet
-
-#### Security Group Discovery
-
-- **Primary**: Searches for existing security groups containing patterns like:
-  - `*tf-infra*`
-  - `*infra-tf*`
-  - `*mv-tf*`
-  - `*${project_name}*`
-- **Fallback**: Uses VPC default security group if no specific security group found
-
-### EC2 Instance Configuration
-
-```hcl
-resource "aws_instance" "vsatellite" {
-  ami                     = data.aws_ami.amazon_linux.id  # Latest Amazon Linux 2
-  instance_type           = var.vsatellite_instance_type  # t3.large (recommended)
-  key_name               = var.key_pair_name              # Your SSH key pair
-  subnet_id              = local.selected_private_subnet  # Auto-discovered private subnet
-  vpc_security_group_ids = [data.aws_security_group.vsatellite.id]  # Auto-discovered security group
-
-  # Root volume: 50GB GP3 encrypted storage
-  # User data: Automated vSatellite installation script
-  # Instance Connect: Enabled for secure SSH access
-}
-```
-
-### Access Methods
-
-After deployment, you can access the vSatellite instance using:
-
-1. **AWS Instance Connect** (Recommended for private subnets):
-
-   ```bash
-   aws ec2-instance-connect ssh --instance-id i-1234567890abcdef0 --os-user ec2-user
-   ```
-
-2. **Traditional SSH** (if key pair configured):
-
-   ```bash
-   ssh -i ~/.ssh/your-key.pem ec2-user@<private-ip>
-   ```
-
-3. **Web Interface** (from within VPC):
-   ```bash
-   https://<private-ip>  # After vSatellite installation completes
-   ```
-
-### Security Features
-
-- **Private Subnet Deployment**: Instance placed in private subnet with no direct internet access
-- **AWS Instance Connect Integration**: Secure SSH without managing SSH keys
-- **Encrypted Storage**: GP3 volumes with encryption enabled
-- **Security Group Discovery**: Uses existing security groups for proper network access
-- **IMDSv2 Required**: Instance metadata service v2 enforced for security
 
 ## Venafi Control Plane (VCP) Integration
 
@@ -462,7 +372,7 @@ Based on `terraform.tfvars`:
 
 ### Outputs
 
-The project provides comprehensive outputs for certificates, configuration variables, and EC2 infrastructure:
+The project provides comprehensive outputs for certificates and configuration variables:
 
 ### Certificate Outputs
 
@@ -470,24 +380,6 @@ The project provides comprehensive outputs for certificates, configuration varia
 - `certificate_ids`: List of certificate IDs from Venafi
 - `certificate_dns`: List of certificate DNs
 - `certificate_count`: Total number of certificates created
-
-### EC2 vSatellite Outputs
-
-- `vsatellite_instance_id`: EC2 instance ID for the vSatellite
-- `vsatellite_private_ip`: Private IP address of the instance
-- `vsatellite_subnet_id`: Subnet where the instance is deployed
-- `vsatellite_vpc_id`: VPC where the instance is deployed
-- `vsatellite_ssh_command`: Ready-to-use SSH command (if key pair configured)
-- `vsatellite_instance_connect_command`: AWS Instance Connect command
-- `vsatellite_web_url`: Web interface URL (accessible from within VPC)
-- `vsatellite_security_group_id`: Security group ID attached to the instance
-- `quick_access_summary`: Consolidated object with all access methods
-
-### Infrastructure Discovery Outputs
-
-- `discovered_vpc_cidr`: CIDR block of the discovered VPC
-- `discovered_vpc_name`: Name of the discovered VPC
-- `available_private_subnets`: List of all discovered private subnets
 
 ### Variable Outputs (excluding sensitive API key)
 
