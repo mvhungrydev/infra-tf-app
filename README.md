@@ -155,8 +155,12 @@ environment    = "dev"
 project_name   = "terraform-cicd"
 
 # Certificate configuration
-certificate_count  = 5
-certificate_domain = "example.com"  # Replace with your domain
+certificate_count      = 5
+certificate_domain     = "example.com"  # Replace with your domain
+certificate_algorithm  = "RSA"          # RSA or ECDSA
+certificate_rsa_bits   = 2048           # 2048, 3072, or 4096
+certificate_valid_days = 90             # Certificate validity period
+certificate_csr_origin = "service"      # CSR origin: "service" for Venafi-generated or "local" for client-generated
 ```
 
 ### 3. Venafi Configuration
@@ -172,7 +176,45 @@ provider "venafi" {
 }
 ```
 
-### 4. IAM Roles
+### 4. Certificate Signing Request (CSR) Configuration
+
+The project supports two CSR generation methods through the `certificate_csr_origin` variable:
+
+#### Service-Generated CSR (Recommended)
+
+```hcl
+certificate_csr_origin = "service"
+```
+
+- **Venafi Control Plane** generates the CSR and private key
+- **Centralized key management** through Venafi service
+- **Enhanced security controls** and audit capabilities
+- **No local key storage** required
+
+#### Local CSR Generation
+
+```hcl
+certificate_csr_origin = "local"
+```
+
+- **Client-side generation** of CSR and private key
+- **Terraform manages** the key generation process
+- **Local key storage** in Terraform state
+- Useful for environments requiring local key control
+
+#### CSR Configuration Example
+
+```hcl
+# Certificate configuration with service-generated CSR
+certificate_count      = 30             # Number of certificates
+certificate_domain     = "mydomain.com" # Base domain
+certificate_algorithm  = "RSA"          # RSA or ECDSA
+certificate_rsa_bits   = 2048           # Key size for RSA
+certificate_valid_days = 90             # Validity period
+certificate_csr_origin = "service"      # Venafi service generates CSR
+```
+
+### 5. IAM Roles
 
 The project uses existing IAM roles:
 
@@ -330,11 +372,12 @@ The project creates multiple certificates using the count parameter:
 
 ```hcl
 resource "venafi_certificate" "certificates" {
-  count       = var.certificate_count  # Default: 5
+  count       = var.certificate_count     # Default: 5
   common_name = "cert-${random_id.cert_suffix[count.index].hex}.${var.certificate_domain}"
-  algorithm   = var.certificate_algorithm  # RSA
-  rsa_bits    = var.certificate_rsa_bits   # 2048
+  algorithm   = var.certificate_algorithm # RSA
+  rsa_bits    = var.certificate_rsa_bits  # 2048
   valid_days  = var.certificate_valid_days # 90
+  csr_origin  = var.certificate_csr_origin # service (Venafi-generated CSR)
 
   san_dns = [
     "alt-${random_id.cert_suffix[count.index].hex}.${var.certificate_domain}",
@@ -359,16 +402,17 @@ The Venafi API key is stored in AWS Secrets Manager:
 
 Based on `terraform.tfvars`:
 
-| Variable                 | Value                    | Description                      |
-| ------------------------ | ------------------------ | -------------------------------- |
-| `aws_account_id`         | 123456789102             | AWS Account ID for Venafi zones  |
-| `certificate_count`      | 5                        | Number of certificates to create |
-| `certificate_domain`     | example.com              | Base domain for certificates     |
-| `certificate_algorithm`  | RSA                      | Certificate algorithm            |
-| `certificate_rsa_bits`   | 2048                     | RSA key size                     |
-| `certificate_valid_days` | 90                       | Certificate validity period      |
-| `venafi_template_alias`  | Default                  | Venafi issuing template          |
-| `venafi_cloud_url`       | https://api.venafi.cloud | VCP API endpoint                 |
+| Variable                 | Value                    | Description                           |
+| ------------------------ | ------------------------ | ------------------------------------- |
+| `aws_account_id`         | 123456789102             | AWS Account ID for Venafi zones       |
+| `certificate_count`      | 5                        | Number of certificates to create      |
+| `certificate_domain`     | example.com              | Base domain for certificates          |
+| `certificate_algorithm`  | RSA                      | Certificate algorithm                 |
+| `certificate_rsa_bits`   | 2048                     | RSA key size                          |
+| `certificate_valid_days` | 90                       | Certificate validity period           |
+| `certificate_csr_origin` | service                  | CSR generation method (service/local) |
+| `venafi_template_alias`  | Default                  | Venafi issuing template               |
+| `venafi_cloud_url`       | https://api.venafi.cloud | VCP API endpoint                      |
 
 ### Outputs
 
@@ -385,7 +429,7 @@ The project provides comprehensive outputs for certificates and configuration va
 
 - **AWS Configuration**: `aws_region`, `aws_account_id`, `environment`, `project_name`
 - **Venafi Configuration**: `venafi_zone`, `venafi_template_alias`, `venafi_cloud_url`
-- **Certificate Configuration**: `certificate_count_config`, `certificate_domain`, `certificate_algorithm`, `certificate_rsa_bits`, `certificate_valid_days`
+- **Certificate Configuration**: `certificate_count_config`, `certificate_domain`, `certificate_algorithm`, `certificate_rsa_bits`, `certificate_valid_days`, `certificate_csr_origin`
 
 View outputs with:
 

@@ -90,6 +90,17 @@ variable "certificate_valid_days" {
   default     = 90
 }
 
+variable "certificate_csr_origin" {
+  description = "CSR origin - 'local' for client-generated or 'service' for Venafi service-generated"
+  type        = string
+  default     = "service"
+
+  validation {
+    condition     = contains(["local", "service"], var.certificate_csr_origin)
+    error_message = "CSR origin must be either 'local' or 'service'."
+  }
+}
+
 # GitHub Configuration
 variable "github_repo_url" {
   description = "GitHub repository URL for CodeBuild"

@@ -59,13 +59,16 @@ resource "random_id" "cert_suffix" {
   byte_length = 4
 }
 
-# Venafi Certificate Resources
+# Venafi Certificate Resources with Service-Generated CSR
 resource "venafi_certificate" "certificates" {
   count       = var.certificate_count
   common_name = "cert-${random_id.cert_suffix[count.index].hex}.${var.certificate_domain}"
   algorithm   = var.certificate_algorithm
   rsa_bits    = var.certificate_rsa_bits
 
+  # Service-generated CSR configuration
+  csr_origin = var.certificate_csr_origin  # Use variable for CSR origin
+  
   # Optional: Add subject alternative names
   san_dns = [
     "alt-${random_id.cert_suffix[count.index].hex}.${var.certificate_domain}",
@@ -76,10 +79,7 @@ resource "venafi_certificate" "certificates" {
   valid_days = var.certificate_valid_days
 
   # VCP supports tags as a list of strings for certificate organization
-   tags = [
-     "Environment: ${var.environment}",
-  #   "Project:${var.project_name}",
-  #   "Index:${count.index}",
-  #   "CreatedBy:terraform"
-   ]
+  tags = [
+    "Environment: ${var.environment}"
+  ]
 }

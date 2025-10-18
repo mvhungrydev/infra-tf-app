@@ -23,6 +23,7 @@ certificate_domain     = "example.com"  # Replace with your domain
 certificate_algorithm  = "RSA"          # RSA or ECDSA
 certificate_rsa_bits   = 2048           # 2048, 3072, or 4096
 certificate_valid_days = 90             # Certificate validity period
+certificate_csr_origin = "service"      # CSR origin: "service" for Venafi-generated or "local" for client-generated
 
 # GitHub Configuration
 github_repo_url = "https://github.com/your-org/your-repo.git"  # Replace with your GitHub repository URL
