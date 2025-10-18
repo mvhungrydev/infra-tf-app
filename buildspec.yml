@@ -36,7 +36,7 @@ phases:
       - export TF_VAR_certificate_algorithm=${CERTIFICATE_ALGORITHM:-"RSA"}
       - export TF_VAR_certificate_rsa_bits=${CERTIFICATE_RSA_BITS:-"2048"}
       - export TF_VAR_certificate_valid_days=${CERTIFICATE_VALID_DAYS:-"90"}
-      - echo "✓ All environment variables configured with secure defaults"
+      - echo "All environment variables configured with secure defaults"
       - echo "Variables passed to Terraform:"
       - echo "  - AWS Account ID: ${TF_VAR_aws_account_id}"
       - echo "  - AWS Region: ${TF_VAR_aws_region}"
@@ -50,20 +50,20 @@ phases:
       - echo "Terraform validation started on `date`"
       - terraform validate
       - echo "Determining Terraform action: ${TERRAFORM_ACTION:-'apply'}"
-      - |
+      - >
         if [ "${TERRAFORM_ACTION:-apply}" = "destroy" ]; then
-          echo "=== DESTROY MODE ==="
-          echo "WARNING: This will DESTROY all infrastructure!"
-          echo "Terraform destroy plan started on $(date)"
-          terraform plan -destroy -out=tfplan -detailed-exitcode
-          export PLAN_EXIT_CODE=$?
-          echo "Destroy plan exit code: $PLAN_EXIT_CODE (0=no changes, 1=error, 2=changes to destroy)"
+          echo "=== DESTROY MODE ===";
+          echo "WARNING: This will DESTROY all infrastructure!";
+          echo "Terraform destroy plan started on $(date)";
+          terraform plan -destroy -out=tfplan -detailed-exitcode;
+          export PLAN_EXIT_CODE=$?;
+          echo "Destroy plan exit code: $PLAN_EXIT_CODE (0=no changes, 1=error, 2=changes to destroy)";
         else
-          echo "=== APPLY MODE ==="
-          echo "Terraform plan started on $(date)"
-          terraform plan -out=tfplan -detailed-exitcode
-          export PLAN_EXIT_CODE=$?
-          echo "Plan exit code: $PLAN_EXIT_CODE (0=no changes, 1=error, 2=changes)"
+          echo "=== APPLY MODE ===";
+          echo "Terraform plan started on $(date)";
+          terraform plan -out=tfplan -detailed-exitcode;
+          export PLAN_EXIT_CODE=$?;
+          echo "Plan exit code: $PLAN_EXIT_CODE (0=no changes, 1=error, 2=changes)";
         fi
 
   build:
@@ -71,7 +71,7 @@ phases:
       - echo "=== Build Phase Started ==="
       - echo "Current branch: ${CODEBUILD_WEBHOOK_HEAD_REF:-$CODEBUILD_SOURCE_VERSION}"
       - echo "Terraform Action: ${TERRAFORM_ACTION:-'apply'}"
-      - |
+      - >
         if [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/main" ] || [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/master" ] || [ "$CODEBUILD_SOURCE_VERSION" = "main" ] || [ "$CODEBUILD_SOURCE_VERSION" = "master" ]; then
           if [ "${TERRAFORM_ACTION:-apply}" = "destroy" ]; then
             echo "DESTROYING INFRASTRUCTURE on main/master branch..."
@@ -125,7 +125,7 @@ phases:
       - echo "=== Post-build Phase Started ==="
       - echo "Build completed on $(date)"
       - echo "Action executed: ${TERRAFORM_ACTION:-'apply'}"
-      - |
+      - >
         if [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/main" ] || [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/master" ] || [ "$CODEBUILD_SOURCE_VERSION" = "main" ] || [ "$CODEBUILD_SOURCE_VERSION" = "master" ]; then
           if [ "${TERRAFORM_ACTION:-apply}" = "destroy" ]; then
             echo "DESTROY ACTION COMPLETED"
