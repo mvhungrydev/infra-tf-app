@@ -45,7 +45,6 @@ phases:
   post_build:
     commands:
       - echo "=== Post-build Phase ==="
-      - terraform output -json > infrastructure_summary.json 2>/dev/null || echo "{\"status\": \"completed\"}" > infrastructure_summary.json
 
 artifacts:
   files:
