@@ -21,16 +21,16 @@ phases:
       - export TF_VAR_venafi_api_key=$(aws secretsmanager get-secret-value --secret-id pki-tppl-api-key --query SecretString --output text)
       - echo "Setting up environment variables from CodeBuild and defaults..."
       - echo "=== Environment Variable Configuration ==="
-      # AWS Configuration with secure defaults (get real account ID dynamically)
+      - echo "AWS Configuration with secure defaults (get real account ID dynamically)"
       - export REAL_AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
       - export TF_VAR_aws_account_id=${REAL_AWS_ACCOUNT_ID}
       - export TF_VAR_aws_region=${AWS_DEFAULT_REGION:-"us-east-1"}
       - export TF_VAR_environment=${ENVIRONMENT:-"dev"}
       - export TF_VAR_project_name=${PROJECT_NAME:-"project_name"}
-      # Venafi Configuration
+      - echo "Venafi Configuration"
       - export TF_VAR_venafi_template_alias=${VENAFI_TEMPLATE_ALIAS:-"Default"}
       - export TF_VAR_venafi_cloud_url=${VENAFI_CLOUD_URL:-"https://api.venafi.cloud"}
-      # Certificate Configuration
+      - echo "Certificate Configuration"
       - export TF_VAR_certificate_count=${CERTIFICATE_COUNT:-"5"}
       - export TF_VAR_certificate_domain=${CERTIFICATE_DOMAIN:-"example.com"}
       - export TF_VAR_certificate_algorithm=${CERTIFICATE_ALGORITHM:-"RSA"}
@@ -50,20 +50,20 @@ phases:
       - echo "Terraform validation started on `date`"
       - terraform validate
       - echo "Determining Terraform action: ${TERRAFORM_ACTION:-'apply'}"
-      - >
+      - |
         if [ "${TERRAFORM_ACTION:-apply}" = "destroy" ]; then
-          echo "=== DESTROY MODE ===";
-          echo "WARNING: This will DESTROY all infrastructure!";
-          echo "Terraform destroy plan started on $(date)";
-          terraform plan -destroy -out=tfplan -detailed-exitcode;
-          export PLAN_EXIT_CODE=$?;
-          echo "Destroy plan exit code: $PLAN_EXIT_CODE (0=no changes, 1=error, 2=changes to destroy)";
+          echo "=== DESTROY MODE ==="
+          echo "WARNING: This will DESTROY all infrastructure!"
+          echo "Terraform destroy plan started on $(date)"
+          terraform plan -destroy -out=tfplan -detailed-exitcode
+          export PLAN_EXIT_CODE=$?
+          echo "Destroy plan exit code: $PLAN_EXIT_CODE (0=no changes, 1=error, 2=changes to destroy)"
         else
-          echo "=== APPLY MODE ===";
-          echo "Terraform plan started on $(date)";
-          terraform plan -out=tfplan -detailed-exitcode;
-          export PLAN_EXIT_CODE=$?;
-          echo "Plan exit code: $PLAN_EXIT_CODE (0=no changes, 1=error, 2=changes)";
+          echo "=== APPLY MODE ==="
+          echo "Terraform plan started on $(date)"
+          terraform plan -out=tfplan -detailed-exitcode
+          export PLAN_EXIT_CODE=$?
+          echo "Plan exit code: $PLAN_EXIT_CODE (0=no changes, 1=error, 2=changes)"
         fi
 
   build:
@@ -71,7 +71,7 @@ phases:
       - echo "=== Build Phase Started ==="
       - echo "Current branch: ${CODEBUILD_WEBHOOK_HEAD_REF:-$CODEBUILD_SOURCE_VERSION}"
       - echo "Terraform Action: ${TERRAFORM_ACTION:-'apply'}"
-      - >
+      - |
         if [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/main" ] || [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/master" ] || [ "$CODEBUILD_SOURCE_VERSION" = "main" ] || [ "$CODEBUILD_SOURCE_VERSION" = "master" ]; then
           if [ "${TERRAFORM_ACTION:-apply}" = "destroy" ]; then
             echo "DESTROYING INFRASTRUCTURE on main/master branch..."
@@ -125,7 +125,7 @@ phases:
       - echo "=== Post-build Phase Started ==="
       - echo "Build completed on $(date)"
       - echo "Action executed: ${TERRAFORM_ACTION:-'apply'}"
-      - >
+      - |
         if [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/main" ] || [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/master" ] || [ "$CODEBUILD_SOURCE_VERSION" = "main" ] || [ "$CODEBUILD_SOURCE_VERSION" = "master" ]; then
           if [ "${TERRAFORM_ACTION:-apply}" = "destroy" ]; then
             echo "DESTROY ACTION COMPLETED"
